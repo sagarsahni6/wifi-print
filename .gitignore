@@ -1,0 +1,85 @@
+# =============================================
+# WiFi Print System - .gitignore
+# =============================================
+
+# ----- OS Generated -----
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# ----- IDE / Editor -----
+.idea/
+*.iml
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+
+# =============================================
+# .NET / WifiPrintServer
+# =============================================
+WifiPrintServer/**/bin/
+WifiPrintServer/**/obj/
+WifiPrintServer/**/*.user
+WifiPrintServer/**/.vs/
+WifiPrintServer/**/launchSettings.json
+WifiPrintServer/**/appsettings.Development.json
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ----- NuGet -----
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# =============================================
+# Android / WifiPrintApp (Gradle + Kotlin)
+# =============================================
+WifiPrintApp/.gradle/
+WifiPrintApp/build/
+WifiPrintApp/app/build/
+WifiPrintApp/local.properties
+WifiPrintApp/.cxx/
+WifiPrintApp/captures/
+WifiPrintApp/**/*.apk
+WifiPrintApp/**/*.aab
+WifiPrintApp/**/*.ap_
+WifiPrintApp/**/*.dex
+WifiPrintApp/**/*.class
+WifiPrintApp/**/output-metadata.json
+
+# Gradle wrapper (keep the wrapper jar for reproducibility)
+# WifiPrintApp/gradle/wrapper/gradle-wrapper.jar
+
+# Signing / Keystore
+*.jks
+*.keystore
+signing.properties
+
+# =============================================
+# Certificates & Secrets
+# =============================================
+*.pfx
+*.pem
+*.key
+*.crt
+*.cer
+appsettings.*.json
+!appsettings.json
+
+# =============================================
+# Logs & Temp
+# =============================================
+*.log
+logs/
+tmp/
+temp/

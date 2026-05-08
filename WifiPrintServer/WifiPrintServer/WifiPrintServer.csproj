@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+
+    <AssemblyName>WifiPrintServer</AssemblyName>
+    <RootNamespace>WifiPrintServer</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>WifiPrint Team</Authors>
+    <Description>Wi-Fi Print Server - Print from Android over Wi-Fi</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET Core (Kestrel web server) -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Docnet.Core" Version="2.6.0" />
+    
+    <!-- SignalR for real-time WebSocket communication -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Core" Version="1.1.0" />
+    
+    <!-- JWT Authentication -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.0.3" />
+    
+    <!-- mDNS/Zeroconf discovery -->
+    <PackageReference Include="Makaretu.Dns.Multicast" Version="0.27.0" />
+    
+    <!-- PDF processing -->
+    <PackageReference Include="itext7" Version="8.0.2" />
+    
+    <!-- Entity Framework Core + SQLite for persistence -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
+    
+    <!-- JSON serialization -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    
+    <!-- System tray support -->
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    
+    <!-- Logging -->
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+
+    <!-- Windows printing -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
