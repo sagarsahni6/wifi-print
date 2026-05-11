@@ -31,7 +31,14 @@ public class FileProcessingService
     public async Task<(string? FilePath, string? Error)> SaveAndValidateFileAsync(
         Stream fileStream, string fileName, long fileSize)
     {
-        var ext = Path.GetExtension(fileName);
+        // Ensure both forward and backward slashes are handled correctly across operating systems
+        string normalizedFileName = fileName.Replace("\\", "/");
+        string safeFileName = Path.GetFileName(normalizedFileName);
+
+        if (string.IsNullOrWhiteSpace(safeFileName))
+            return (null, "Invalid file name");
+
+        var ext = Path.GetExtension(safeFileName);
         if (!SupportedExtensions.Contains(ext))
             return (null, $"Unsupported file type: {ext}");
 
@@ -40,7 +47,7 @@ public class FileProcessingService
             return (null, $"File too large. Max: {_settings.MaxFileSizeMB}MB");
 
         Directory.CreateDirectory(_settings.UploadDirectory);
-        string uniqueName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..6]}_{fileName}";
+        string uniqueName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString("N")[..6]}_{safeFileName}";
         string filePath = Path.Combine(_settings.UploadDirectory, uniqueName);
 
         try
@@ -90,7 +97,8 @@ public class FileProcessingService
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = soffice,
-                CreateNoWindow = true, UseShellExecute = false,
+                CreateNoWindow = true,
+                UseShellExecute = false,
                 RedirectStandardError = true
             };
             psi.ArgumentList.Add("--headless");
