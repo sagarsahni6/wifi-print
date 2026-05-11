@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace WifiPrintServer.Models;
@@ -16,7 +17,7 @@ public class AppSettings
 
     public int ServerPort { get; set; } = 5000;
     public string ServerName { get; set; } = Environment.MachineName;
-    public string JwtSecret { get; set; } = Guid.NewGuid().ToString("N");
+    public string JwtSecret { get; set; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
     public int JwtExpirationDays { get; set; } = 365;
     public string? DefaultPrinter { get; set; }
     public bool AutoStart { get; set; } = false;
