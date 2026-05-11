@@ -128,7 +128,6 @@ class HomeViewModel @Inject constructor(
 
             val server = repository.getLastPairedServer()
             if (server != null) {
-                Log.d(TAG, "Found last paired server: ${server.name} at ${server.ipAddress}:${server.port}")
                 try {
                     repository.connectToServer(server)
 
