@@ -46,13 +46,11 @@ class NetworkMonitor(private val context: Context) {
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                Log.d(TAG, "WiFi connected")
                 _isWifiConnected.value = true
                 _wifiSsid.value = getCurrentSsid()
             }
 
             override fun onLost(network: Network) {
-                Log.d(TAG, "WiFi disconnected")
                 _isWifiConnected.value = false
                 _wifiSsid.value = ""
             }
