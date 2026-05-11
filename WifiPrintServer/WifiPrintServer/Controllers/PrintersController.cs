@@ -49,7 +49,7 @@ public class PrintersController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpPost("default")]
-    public IActionResult SetDefault([FromBody] SetDefaultPrinterRequest request)
+    public async Task<IActionResult> SetDefault([FromBody] SetDefaultPrinterRequest request)
     {
         if (string.IsNullOrEmpty(request.PrinterName))
             return BadRequest(ApiResponse<object>.Fail("Printer name required"));
@@ -60,7 +60,7 @@ public class PrintersController : ControllerBase
         if (match == null)
             return NotFound(ApiResponse<object>.Fail($"Printer '{request.PrinterName}' not found"));
 
-        _printerService.SetDefaultPrinter(request.PrinterName);
+        await _printerService.SetDefaultPrinterAsync(request.PrinterName);
         return Ok(ApiResponse<object>.Ok(null, $"Default printer set to: {request.PrinterName}"));
     }
 }
