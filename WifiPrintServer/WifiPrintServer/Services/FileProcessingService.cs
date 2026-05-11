@@ -13,7 +13,8 @@ public class FileProcessingService
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif",
-        ".txt", ".text", ".docx", ".doc"
+        ".txt", ".text", ".docx", ".doc",
+        ".xlsx", ".xls", ".pptx", ".ppt", ".csv", ".rtf", ".odt", ".ods", ".odp"
     };
 
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -61,8 +62,10 @@ public class FileProcessingService
         if (ext == ".pdf" || ImageExtensions.Contains(ext))
             return (filePath, null);
 
-        if (ext == ".docx" || ext == ".doc")
-            return await ConvertDocxToPdfAsync(filePath);
+        var libreOfficeExtensions = new HashSet<string> { ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".csv", ".rtf", ".odt", ".ods", ".odp" };
+
+        if (libreOfficeExtensions.Contains(ext))
+            return await ConvertWithLibreOfficeAsync(filePath);
 
         if (ext == ".txt" || ext == ".text")
             return await ConvertTextToPdfAsync(filePath);
@@ -70,7 +73,7 @@ public class FileProcessingService
         return (null, $"No converter for {ext}");
     }
 
-    private async Task<(string?, string?)> ConvertDocxToPdfAsync(string filePath)
+    private async Task<(string?, string?)> ConvertWithLibreOfficeAsync(string filePath)
     {
         try
         {
@@ -82,7 +85,7 @@ public class FileProcessingService
             };
             string? soffice = paths.FirstOrDefault(p => p == "soffice" || File.Exists(p));
             if (soffice == null)
-                return (null, "LibreOffice required for DOCX conversion but not found.");
+                return (null, "LibreOffice required for document conversion but not found.");
 
             var psi = new System.Diagnostics.ProcessStartInfo
             {
@@ -129,7 +132,9 @@ public class FileProcessingService
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         if (ext == ".pdf") return "PDF";
         if (ImageExtensions.Contains(ext)) return "Image";
-        if (ext is ".docx" or ".doc") return "Document";
+        if (new[] { ".docx", ".doc", ".rtf", ".odt" }.Contains(ext)) return "Document";
+        if (new[] { ".xlsx", ".xls", ".csv", ".ods" }.Contains(ext)) return "Spreadsheet";
+        if (new[] { ".pptx", ".ppt", ".odp" }.Contains(ext)) return "Presentation";
         if (ext is ".txt" or ".text") return "Text";
         return "Unknown";
     }

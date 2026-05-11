@@ -2,6 +2,8 @@ package com.wifiprint.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.material3.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
@@ -32,6 +34,13 @@ private val LightColorScheme = lightColorScheme(
     errorContainer = Red50,
     outline = DividerColor,
     outlineVariant = DividerColor
+)
+
+
+val Shapes = Shapes(
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp)
 )
 
 val AppTypography = Typography(
@@ -65,6 +74,7 @@ fun WifiPrintTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
-        content = content
+        content = content,
+        shapes = Shapes
     )
 }

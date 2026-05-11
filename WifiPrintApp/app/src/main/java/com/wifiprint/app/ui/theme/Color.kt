@@ -3,13 +3,13 @@ package com.wifiprint.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ── Primary — Refined indigo-violet ────────────────────────────────
-val Primary = Color(0xFF5C6BC0)       // Indigo 400
-val PrimaryDark = Color(0xFF3949AB)   // Indigo 600
-val PrimaryLight = Color(0xFFE8EAF6)  // Indigo 50
+val Primary = Color(0xFF4F46E5)       // Indigo 400
+val PrimaryDark = Color(0xFF4338CA)   // Indigo 600
+val PrimaryLight = Color(0xFFEEF2FF)  // Indigo 50
 
 // ── Accent — Teal for secondary actions ────────────────────────────
-val Accent = Color(0xFF26A69A)        // Teal 400
-val AccentLight = Color(0xFFE0F2F1)   // Teal 50
+val Accent = Color(0xFF14B8A6)        // Teal 400
+val AccentLight = Color(0xFFCCFBF1)   // Teal 50
 
 // ── Status colors ──────────────────────────────────────────────────
 val Green400 = Color(0xFF66BB6A)
