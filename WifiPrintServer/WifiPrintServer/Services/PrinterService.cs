@@ -86,10 +86,10 @@ public class PrinterService
     /// <summary>
     /// Set a printer as the default for WiFi Print jobs.
     /// </summary>
-    public void SetDefaultPrinter(string printerName)
+    public async Task SetDefaultPrinterAsync(string printerName)
     {
         _settings.DefaultPrinter = printerName;
-        _settings.Save();
+        await _settings.SaveAsync();
         _logger.LogInformation("Default printer set to: {Printer}", printerName);
     }
 

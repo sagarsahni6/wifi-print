@@ -30,11 +30,11 @@ public class AppSettings
     public int MaxFileSizeMB { get; set; } = 100;
     public bool RequireAuth { get; set; } = true;
 
+
     /// <summary>
-    /// Loads settings from disk, or creates a new file with defaults.
-    /// The JwtSecret is generated once and persisted — never changes across restarts.
+    /// Asynchronously loads settings from disk, or creates a new file with defaults.
     /// </summary>
-    public static AppSettings LoadOrCreate()
+    public static async Task<AppSettings> LoadOrCreateAsync()
     {
         Directory.CreateDirectory(SettingsDir);
 
@@ -42,8 +42,8 @@ public class AppSettings
         {
             try
             {
-                var json = File.ReadAllText(SettingsFilePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json,
+                using var stream = File.OpenRead(SettingsFilePath);
+                var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (settings != null)
                     return settings;
@@ -51,22 +51,22 @@ public class AppSettings
             catch { /* fall through to create new */ }
         }
 
-        // First launch — create settings with a stable JWT secret
         var newSettings = new AppSettings();
-        newSettings.Save();
+        await newSettings.SaveAsync();
         return newSettings;
     }
 
+
     /// <summary>
-    /// Persists current settings to disk.
+    /// Asynchronously persists current settings to disk.
     /// </summary>
-    public void Save()
+    public async Task SaveAsync()
     {
         Directory.CreateDirectory(SettingsDir);
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
+        using var stream = File.Create(SettingsFilePath);
+        await JsonSerializer.SerializeAsync(stream, this, new JsonSerializerOptions
         {
             WriteIndented = true
         });
-        File.WriteAllText(SettingsFilePath, json);
     }
 }
