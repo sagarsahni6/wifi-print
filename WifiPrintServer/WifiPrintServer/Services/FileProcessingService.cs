@@ -87,10 +87,15 @@ public class FileProcessingService
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = soffice,
-                Arguments = $"--headless --convert-to pdf --outdir \"{outputDir}\" \"{filePath}\"",
                 CreateNoWindow = true, UseShellExecute = false,
                 RedirectStandardError = true
             };
+            psi.ArgumentList.Add("--headless");
+            psi.ArgumentList.Add("--convert-to");
+            psi.ArgumentList.Add("pdf");
+            psi.ArgumentList.Add("--outdir");
+            psi.ArgumentList.Add(outputDir);
+            psi.ArgumentList.Add(filePath);
             using var proc = System.Diagnostics.Process.Start(psi);
             if (proc == null) return (null, "Failed to start LibreOffice");
             await proc.WaitForExitAsync();
