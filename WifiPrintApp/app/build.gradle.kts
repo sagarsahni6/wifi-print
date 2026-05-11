@@ -20,10 +20,24 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+
+    signingConfigs {
+        create("release") {
+            // A placeholder config. For real production, use proper keystore.
+            // Using debug keystore to allow build for now.
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
+            isShrinkResources = true
         }
     }
 
@@ -95,6 +109,12 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
+
+    // uCrop Image Cropper
+    implementation("com.github.yalantis:ucrop:2.2.8")
+
+    // Document Scanner
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

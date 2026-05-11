@@ -299,7 +299,7 @@ public partial class MainWindow : Window
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
             if (enable)
                 key?.SetValue("WifiPrintServer",
-                    $"\"{System.Reflection.Assembly.GetExecutingAssembly().Location}\"");
+                    $"\"{System.AppContext.BaseDirectory}\"");
             else
                 key?.DeleteValue("WifiPrintServer", false);
         }

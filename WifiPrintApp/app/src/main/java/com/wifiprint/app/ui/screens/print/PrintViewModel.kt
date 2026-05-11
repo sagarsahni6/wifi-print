@@ -118,6 +118,22 @@ class PrintViewModel @Inject constructor(
         }
     }
 
+
+    fun updateFileUri(index: Int, newUri: Uri) {
+        if (index == -1) {
+            _state.update { it.copy(selectedFileUri = newUri) }
+        } else {
+            _state.update {
+                val updatedFiles = it.selectedFiles.toMutableList()
+                if (index in updatedFiles.indices) {
+                    val oldFile = updatedFiles[index]
+                    updatedFiles[index] = oldFile.copy(uri = newUri)
+                }
+                it.copy(selectedFiles = updatedFiles)
+            }
+        }
+    }
+
     fun clearFiles() {
         _state.update {
             it.copy(
