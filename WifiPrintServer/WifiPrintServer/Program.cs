@@ -18,13 +18,21 @@ namespace WifiPrintServer;
 public partial class Program
 {
     public static WebApplication? WebApp { get; private set; }
-    public static AppSettings Settings { get; private set; } = AppSettings.LoadOrCreate();
+    public static AppSettings Settings { get; private set; } = null!;
     public static PrintQueueManager? QueueManager { get; private set; }
     public static AuthService? AuthServiceInstance { get; private set; }
     public static DiscoveryService? Discovery { get; private set; }
     public static StatusBroadcaster? Broadcaster { get; private set; }
     public static PrinterService? PrinterServiceInstance { get; private set; }
     public static X509Certificate2? ServerCertificate { get; private set; }
+
+    /// <summary>
+    /// Initializes application settings asynchronously.
+    /// </summary>
+    public static async Task InitializeAsync()
+    {
+        Settings = await AppSettings.LoadOrCreateAsync();
+    }
 
     /// <summary>
     /// Starts the Kestrel web server on a background thread.

@@ -32,7 +32,6 @@ class NsdDiscoveryManager(context: Context) {
 
     private val discoveryListener = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String) {
-            Log.d(TAG, "Discovery started for $serviceType")
             _isSearching.value = true
         }
 

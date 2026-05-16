@@ -83,3 +83,4 @@ appsettings.*.json
 logs/
 tmp/
 temp/
+WifiPrintServer/publish_out/

@@ -257,7 +257,7 @@ public partial class MainWindow : Window
     //  Settings
     // ═══════════════════════════════════════════════════════════════
 
-    private void SaveSettings_Click(object sender, RoutedEventArgs e)
+    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
         if (int.TryParse(PortInput.Text, out int port))
             Program.Settings.ServerPort = port;
@@ -268,10 +268,11 @@ public partial class MainWindow : Window
         // Save default printer selection
         if (DefaultPrinterCombo.SelectedItem is string selectedPrinter && !string.IsNullOrEmpty(selectedPrinter))
         {
-            Program.PrinterServiceInstance?.SetDefaultPrinter(selectedPrinter);
+            if (Program.PrinterServiceInstance != null)
+                await Program.PrinterServiceInstance.SetDefaultPrinterAsync(selectedPrinter);
         }
 
-        Program.Settings.Save();
+        await Program.Settings.SaveAsync();
         SetAutoStart(Program.Settings.AutoStart);
 
         MessageBox.Show("Settings saved. Some changes require a restart.",
@@ -302,7 +303,7 @@ public partial class MainWindow : Window
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
             if (enable)
                 key?.SetValue("WifiPrintServer",
-                    $"\"{System.Reflection.Assembly.GetExecutingAssembly().Location}\"");
+                    $"\"{System.AppContext.BaseDirectory}\"");
             else
                 key?.DeleteValue("WifiPrintServer", false);
         }

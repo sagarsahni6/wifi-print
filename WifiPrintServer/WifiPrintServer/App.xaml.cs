@@ -10,9 +10,16 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Initialize settings asynchronously
+        await Program.InitializeAsync();
+
         // Ensure upload/log directories exist
         Directory.CreateDirectory(Program.Settings.UploadDirectory);
         Directory.CreateDirectory(Program.Settings.LogDirectory);
+
+        // Initialize and show main window manually since StartupUri was removed
+        var mainWindow = new MainWindow();
+        mainWindow.Show();
 
         // Start the web server on a background thread
         _ = Task.Run(async () =>
