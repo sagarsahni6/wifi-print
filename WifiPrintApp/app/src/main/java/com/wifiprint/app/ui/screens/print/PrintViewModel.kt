@@ -1,12 +1,16 @@
 package com.wifiprint.app.ui.screens.print
 
+import android.content.Context
 import android.net.Uri
+import androidx.work.WorkManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wifiprint.app.data.models.PrintSettings
 import com.wifiprint.app.data.models.PrinterInfo
 import com.wifiprint.app.data.models.SelectedFile
 import com.wifiprint.app.data.repository.PrintRepository
+import com.wifiprint.app.workers.PrintUploadWorker
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,10 +22,11 @@ data class PrintUiState(
     // Single file (backward compatible)
     val selectedFileUri: Uri? = null,
     val selectedFileName: String = "",
+    val fileType: String = "Unknown",
     // Multi-file batch
     val selectedFiles: List<SelectedFile> = emptyList(),
     val isBatchMode: Boolean = false,
-    val batchProgress: Int = 0,         // current file index in batch
+    val batchProgress: Int = 0,
     val batchTotal: Int = 0,
     // Printers
     val printers: List<PrinterInfo> = emptyList(),
@@ -29,7 +34,7 @@ data class PrintUiState(
     // Settings
     val settings: PrintSettings = PrintSettings(),
     // Page range
-    val pageRangeMode: String = "All",   // "All" or "Custom"
+    val pageRangeMode: String = "All",
     val totalPages: Int? = null,
     val pageRangeError: String? = null,
     // Status
@@ -44,11 +49,13 @@ data class PrintUiState(
 
 @HiltViewModel
 class PrintViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val repository: PrintRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PrintUiState())
     val state: StateFlow<PrintUiState> = _state
+    private val workManager by lazy { WorkManager.getInstance(appContext) }
 
     init { loadPrinters() }
 
@@ -74,10 +81,12 @@ class PrintViewModel @Inject constructor(
     }
 
     fun setFile(uri: Uri, name: String) {
+        val detectedType = if (uri == Uri.EMPTY) "Unknown" else detectFileType(uri, name)
         _state.update {
             it.copy(
                 selectedFileUri = uri,
                 selectedFileName = name,
+                fileType = detectedType,
                 error = null,
                 success = false,
                 totalPages = null,
@@ -87,9 +96,56 @@ class PrintViewModel @Inject constructor(
             )
         }
         // Auto-fetch page count for PDFs
-        if (name.lowercase().endsWith(".pdf") && uri != Uri.EMPTY) {
+        val isPdf = detectedType == "PDF" || name.lowercase().endsWith(".pdf")
+        if (isPdf && uri != Uri.EMPTY) {
             fetchPageCount(uri, name)
         }
+    }
+
+    private fun detectFileType(uri: Uri, name: String): String {
+        // 1. Try MIME type from ContentResolver
+        val mime = appContext.contentResolver.getType(uri)
+        val fromMime = when {
+            mime == null -> null
+            mime == "application/pdf" -> "PDF"
+            mime.startsWith("image/") -> "Image"
+            mime.startsWith("text/") -> "Text"
+            mime.contains("word") -> "Document"
+            mime.contains("sheet") -> "Spreadsheet"
+            mime.contains("presentation") -> "Presentation"
+            else -> null
+        }
+        if (fromMime != null) return fromMime
+
+        // 2. Try extension
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val fromExt = when (ext) {
+            "pdf" -> "PDF"
+            "jpg", "jpeg", "png", "bmp", "gif", "webp" -> "Image"
+            "txt", "text", "csv", "log", "md" -> "Text"
+            "docx", "doc" -> "Document"
+            "xlsx", "xls" -> "Spreadsheet"
+            "pptx", "ppt" -> "Presentation"
+            else -> null
+        }
+        if (fromExt != null) return fromExt
+
+        // 3. Magic bytes
+        return try {
+            appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                val header = ByteArray(8)
+                val bytesRead = stream.read(header)
+                if (bytesRead >= 4) {
+                    val headerStr = String(header, 0, bytesRead.coerceAtMost(8))
+                    when {
+                        headerStr.startsWith("%PDF") -> "PDF"
+                        header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() -> "Image"
+                        header[0] == 0x89.toByte() && headerStr.substring(1).startsWith("PNG") -> "Image"
+                        else -> "Unknown"
+                    }
+                } else "Unknown"
+            } ?: "Unknown"
+        } catch (_: Exception) { "Unknown" }
     }
 
     fun addFiles(files: List<SelectedFile>) {
@@ -208,21 +264,18 @@ class PrintViewModel @Inject constructor(
 
         _state.update { it.copy(isUploading = true, error = null) }
 
-        viewModelScope.launch {
+        try {
             val settings = _state.value.settings.copy(selectedPrinterId = printer.id)
-            repository.submitPrintJob(
+            val request = PrintUploadWorker.buildRequest(
                 fileUri = uri,
                 fileName = _state.value.selectedFileName,
                 settings = settings,
                 printerName = printer.name
-            ).fold(
-                onSuccess = { response ->
-                    _state.update { it.copy(isUploading = false, success = true, jobId = response.jobId) }
-                },
-                onFailure = { e ->
-                    _state.update { it.copy(isUploading = false, error = e.message ?: "Upload failed") }
-                }
             )
+            workManager.enqueue(request)
+            _state.update { it.copy(isUploading = false, success = true, error = null) }
+        } catch (e: Exception) {
+            _state.update { it.copy(isUploading = false, error = e.message ?: "Failed to schedule upload") }
         }
     }
 
@@ -238,28 +291,27 @@ class PrintViewModel @Inject constructor(
         _state.update { it.copy(isUploading = true, error = null, batchProgress = 0, batchTotal = files.size) }
 
         viewModelScope.launch {
-            val settings = _state.value.settings.copy(selectedPrinterId = printer.id)
-            var lastJobId: String? = null
-            var failCount = 0
+            try {
+                val settings = _state.value.settings.copy(selectedPrinterId = printer.id)
+                files.forEachIndexed { index, file ->
+                    _state.update { it.copy(batchProgress = index + 1) }
+                    workManager.enqueue(
+                        PrintUploadWorker.buildRequest(
+                            fileUri = file.uri,
+                            fileName = file.name,
+                            settings = settings,
+                            printerName = printer.name
+                        )
+                    )
+                }
 
-            for ((index, file) in files.withIndex()) {
-                _state.update { it.copy(batchProgress = index + 1) }
-                repository.submitPrintJob(
-                    fileUri = file.uri,
-                    fileName = file.name,
-                    settings = settings,
-                    printerName = printer.name
-                ).fold(
-                    onSuccess = { response -> lastJobId = response.jobId },
-                    onFailure = { failCount++ }
-                )
-            }
-
-            if (failCount == files.size) {
-                _state.update { it.copy(isUploading = false, error = "All uploads failed") }
-            } else {
-                _state.update { it.copy(isUploading = false, success = true, jobId = lastJobId,
-                    error = if (failCount > 0) "$failCount/${files.size} uploads failed" else null) }
+                _state.update {
+                    it.copy(isUploading = false, success = true, error = null)
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(isUploading = false, error = e.message ?: "Failed to schedule uploads")
+                }
             }
         }
     }

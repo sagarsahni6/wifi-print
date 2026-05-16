@@ -87,5 +87,5 @@ interface PrintApiService {
 
     /** Check if the server is online. */
     @GET("api/status")
-    suspend fun getServerStatus(): Response<Map<String, Any>>
+    suspend fun getServerStatus(): Response<ServerStatusResponse>
 }

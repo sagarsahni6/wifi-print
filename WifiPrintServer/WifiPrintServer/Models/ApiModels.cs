@@ -63,5 +63,21 @@ public class JobStatusUpdate
     public string Status { get; set; } = string.Empty;
     public int Progress { get; set; }
     public string? Message { get; set; }
+    public string QueueState { get; set; } = "Idle";
+    public string? FailureCode { get; set; }
+    public string? FailureMessage { get; set; }
+    public string SourceDeviceId { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+public class ServerStatusResponse
+{
+    public string Status { get; set; } = "Online";
+    public string ServerName { get; set; } = Environment.MachineName;
+    public string Version { get; set; } = "1.0.0";
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public bool RequiresPairing { get; set; } = true;
+    public bool PrinterAvailable { get; set; }
+    public int PrinterCount { get; set; }
+    public string Readiness { get; set; } = "Ready";
 }

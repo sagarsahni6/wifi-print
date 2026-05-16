@@ -65,4 +65,20 @@ class ConnectViewModel @Inject constructor(
             )
         }
     }
+
+    /**
+     * Connects via QR code data — creates a ServerInfo from the scanned payload
+     * and initiates the approval flow. The cert fingerprint from the QR ensures
+     * trust-on-first-use security.
+     */
+    fun connectFromQr(ip: String, port: Int, name: String, certFingerprint: String) {
+        val server = ServerInfo(
+            id = "$ip:$port",
+            name = name,
+            ipAddress = ip,
+            port = port,
+            certificateFingerprint = certFingerprint.ifBlank { null }
+        )
+        connectToServer(server)
+    }
 }

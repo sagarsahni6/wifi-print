@@ -2,7 +2,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using WifiPrintServer.Data;
 using WifiPrintServer.Hubs;
 using WifiPrintServer.Models;
 using WifiPrintServer.Services;
@@ -21,6 +24,7 @@ public partial class Program
     public static DiscoveryService? Discovery { get; private set; }
     public static StatusBroadcaster? Broadcaster { get; private set; }
     public static PrinterService? PrinterServiceInstance { get; private set; }
+    public static X509Certificate2? ServerCertificate { get; private set; }
 
     /// <summary>
     /// Starts the Kestrel web server on a background thread.
@@ -28,21 +32,33 @@ public partial class Program
     /// </summary>
     public static async Task StartWebServerAsync()
     {
-        // Ensure JWT secret is long enough
-        if (Settings.JwtSecret.Length < 32)
-            Settings.JwtSecret = Settings.JwtSecret.PadRight(32, 'X');
-
         var builder = WebApplication.CreateBuilder();
+        builder.Host.UseSerilog((_, _, loggerConfiguration) =>
+        {
+            Directory.CreateDirectory(Settings.LogDirectory);
+            loggerConfiguration
+                .Enrich.FromLogContext()
+                .WriteTo.File(
+                    Path.Combine(Settings.LogDirectory, "server-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    shared: true);
+        });
 
         // Configure HTTPS with self-signed certificate
-        var cert = GetOrCreateSelfSignedCert();
-        builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(k =>
+        ServerCertificate = GetOrCreateSelfSignedCert();
+        builder.Services.Configure<KestrelServerOptions>(k =>
         {
-            k.ListenAnyIP(Settings.ServerPort, lo => lo.UseHttps(cert));
+            k.ListenAnyIP(Settings.ServerPort, lo => lo.UseHttps(ServerCertificate));
         });
 
         // Register services
         builder.Services.AddSingleton(Settings);
+        builder.Services.AddDbContextFactory<ServerStateContext>(options =>
+        {
+            options.UseSqlite($"Data Source={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "wifiprint.db")}");
+        });
+        builder.Services.AddSingleton<ServerStateStore>();
         builder.Services.AddSingleton<PrinterService>();
         builder.Services.AddSingleton<PrintQueueManager>();
         builder.Services.AddSingleton<FileProcessingService>();
@@ -88,22 +104,40 @@ public partial class Program
                         if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/ws"))
                             context.Token = accessToken;
                         return Task.CompletedTask;
+                    },
+                    OnTokenValidated = context =>
+                    {
+                        var authService = context.HttpContext.RequestServices.GetRequiredService<AuthService>();
+                        var deviceId = context.Principal?.FindFirst("deviceId")?.Value;
+                        if (string.IsNullOrWhiteSpace(deviceId))
+                        {
+                            context.Fail("Missing deviceId claim");
+                            return Task.CompletedTask;
+                        }
+
+                        var device = authService.GetDeviceById(deviceId);
+                        if (device == null || device.IsBlocked || !device.IsActive)
+                        {
+                            context.Fail("Device is not authorized");
+                            return Task.CompletedTask;
+                        }
+
+                        authService.MarkDeviceSeen(deviceId);
+                        return Task.CompletedTask;
                     }
                 };
             });
 
         builder.Services.AddAuthorization();
-        builder.Services.AddCors(options =>
-        {
-            options.AddDefaultPolicy(policy =>
-                policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-        });
 
         // Build app
         WebApp = builder.Build();
 
+        var stateStore = WebApp.Services.GetRequiredService<ServerStateStore>();
+        stateStore.EnsureCreated();
+        stateStore.ExpirePendingApprovals();
+
         // Middleware pipeline
-        WebApp.UseCors();
         WebApp.UseAuthentication();
         WebApp.UseAuthorization();
         WebApp.MapControllers();
@@ -129,6 +163,8 @@ public partial class Program
             Settings.ServerName);
         Discovery.Start();
 
+        QueueManager.RestoreJobs();
+
         // Run the web server (non-blocking)
         await WebApp.RunAsync();
     }
@@ -143,7 +179,7 @@ public partial class Program
             "WifiPrintServer");
         Directory.CreateDirectory(certDir);
         string certPath = Path.Combine(certDir, "server.pfx");
-        string password = "WifiPrint2024!";
+        string password = Settings.CertificatePassword;
 
         if (File.Exists(certPath))
         {
@@ -168,7 +204,8 @@ public partial class Program
         // Add SAN for local IPs
         var sanBuilder = new SubjectAlternativeNameBuilder();
         sanBuilder.AddIpAddress(System.Net.IPAddress.Loopback);
-        sanBuilder.AddIpAddress(System.Net.IPAddress.Parse("0.0.0.0"));
+        if (System.Net.IPAddress.TryParse(DiscoveryService.GetLocalIpAddress(), out var localIp))
+            sanBuilder.AddIpAddress(localIp);
         sanBuilder.AddDnsName("localhost");
         sanBuilder.AddDnsName(Environment.MachineName);
         request.CertificateExtensions.Add(sanBuilder.Build());

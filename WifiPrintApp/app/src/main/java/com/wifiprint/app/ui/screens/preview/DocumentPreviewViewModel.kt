@@ -36,9 +36,12 @@ class DocumentPreviewViewModel @Inject constructor(
         // Get display name from ContentResolver (works for content:// URIs)
         val displayName = getDisplayName(uri) ?: uri.lastPathSegment ?: "file"
 
-        // Get MIME type from ContentResolver first, fall back to extension
+        // Get MIME type from ContentResolver first, fall back to extension, then magic bytes
         val mimeType = context.contentResolver.getType(uri)
-        val fileType = getFileTypeFromMime(mimeType) ?: getFileTypeFromExtension(displayName)
+        val fileType = getFileTypeFromMime(mimeType)
+            ?: getFileTypeFromExtension(displayName).let {
+                if (it == "Unknown") (detectFileTypeByMagicBytes(uri) ?: it) else it
+            }
 
         _state.update {
             it.copy(fileUri = uri, fileName = displayName, fileType = fileType, isLoading = false)
@@ -46,15 +49,33 @@ class DocumentPreviewViewModel @Inject constructor(
     }
 
     /**
-     * Query ContentResolver for the actual display name (e.g. "document.pdf").
-     * This works correctly for content:// URIs from document pickers.
+     * Query ContentResolver for the actual display name.
+     * Tries OpenableColumns.DISPLAY_NAME first (SAF), then MediaStore column,
+     * then falls back to _data path basename (MediaStore File URIs).
      */
     private fun getDisplayName(uri: Uri): String? {
         return try {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
+                    // Try standard DISPLAY_NAME first
                     val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex >= 0) cursor.getString(nameIndex) else null
+                    if (nameIndex >= 0) {
+                        val name = cursor.getString(nameIndex)
+                        if (!name.isNullOrBlank()) return@use name
+                    }
+                    // Try MediaStore DISPLAY_NAME
+                    val mediaNameIndex = cursor.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                    if (mediaNameIndex >= 0) {
+                        val name = cursor.getString(mediaNameIndex)
+                        if (!name.isNullOrBlank()) return@use name
+                    }
+                    // Try _data column (full path) and extract basename
+                    val dataIndex = cursor.getColumnIndex("_data")
+                    if (dataIndex >= 0) {
+                        val path = cursor.getString(dataIndex)
+                        if (!path.isNullOrBlank()) return@use path.substringAfterLast('/')
+                    }
+                    null
                 } else null
             }
         } catch (e: Exception) {
@@ -94,6 +115,31 @@ class DocumentPreviewViewModel @Inject constructor(
             "xlsx", "xls" -> "Spreadsheet"
             "pptx", "ppt" -> "Presentation"
             else -> "Unknown"
+        }
+    }
+
+    /**
+     * Last-resort detection: read the first few bytes to identify the file type
+     * by magic bytes. Handles scanned PDFs from MediaStore where MIME and
+     * extension detection both fail.
+     */
+    private fun detectFileTypeByMagicBytes(uri: Uri): String? {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val header = ByteArray(8)
+                val bytesRead = stream.read(header)
+                if (bytesRead >= 4) {
+                    val headerStr = String(header, 0, bytesRead.coerceAtMost(8))
+                    when {
+                        headerStr.startsWith("%PDF") -> "PDF"
+                        header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() -> "Image"  // JPEG
+                        header[0] == 0x89.toByte() && headerStr.substring(1).startsWith("PNG") -> "Image"  // PNG
+                        else -> null
+                    }
+                } else null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 

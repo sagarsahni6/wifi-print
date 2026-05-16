@@ -1,10 +1,11 @@
 package com.wifiprint.app.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,10 +14,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,13 +38,13 @@ fun SettingsScreen() {
             .verticalScroll(rememberScrollState())
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // ── Header ──────────────────────────────────────────────────
+        // ── Gradient Header ──────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Primary, PrimaryDark.copy(alpha = 0.9f))
+                        colors = listOf(GradientStart, GradientEnd)
                     )
                 )
                 .padding(horizontal = 20.dp, vertical = 32.dp)
@@ -79,19 +80,19 @@ fun SettingsScreen() {
                     subtitle = "Switch to dark theme",
                     checked = darkMode,
                     onCheckedChange = { darkMode = it },
-                    iconTint = Color(0xFF7E57C2)
+                    iconTint = Secondary
                 )
             }
 
             // ── Connection ──────────────────────────────────────────
-            SettingsGroup(title = "Connection", icon = Icons.Filled.Wifi, color = Cyan400) {
+            SettingsGroup(title = "Connection", icon = Icons.Filled.Wifi, color = Tertiary) {
                 SettingsToggleItem(
                     icon = Icons.Filled.WifiFind,
                     title = "Auto-connect",
                     subtitle = "Reconnect to last server automatically",
                     checked = autoConnect,
                     onCheckedChange = { autoConnect = it },
-                    iconTint = Cyan400
+                    iconTint = Tertiary
                 )
             }
 
@@ -108,16 +109,16 @@ fun SettingsScreen() {
             }
 
             // ── Print & Preview ─────────────────────────────────────
-            SettingsGroup(title = "Print & Preview", icon = Icons.Filled.Print, color = Accent) {
+            SettingsGroup(title = "Print & Preview", icon = Icons.Filled.Print, color = Cyan400) {
                 SettingsToggleItem(
                     icon = Icons.Filled.HighQuality,
                     title = "High-Quality Preview",
                     subtitle = "Use 2x resolution for PDF previews",
                     checked = highQualityPreview,
                     onCheckedChange = { highQualityPreview = it },
-                    iconTint = Accent
+                    iconTint = Cyan400
                 )
-                Divider(modifier = Modifier.padding(start = 52.dp))
+                Divider(modifier = Modifier.padding(start = 52.dp), color = DividerColor)
                 SettingsToggleItem(
                     icon = Icons.Filled.CleaningServices,
                     title = "Auto-Clean Scans",
@@ -132,8 +133,9 @@ fun SettingsScreen() {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -165,6 +167,58 @@ fun SettingsScreen() {
                     )
                 }
             }
+
+            // ── Get PC Server ────────────────────────────────────────
+            val context = LocalContext.current
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Tertiary.copy(alpha = 0.1f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Computer, null, tint = Tertiary,
+                                    modifier = Modifier.size(22.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text("PC Server", style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "WiFi Print requires a companion server running on your Windows 10/11 PC. " +
+                                "Download it free from our website.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://wifiprint.app/#download")
+                            )
+                            context.startActivity(intent)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Download PC Server", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }
@@ -181,8 +235,9 @@ private fun SettingsGroup(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.animateContentSize()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

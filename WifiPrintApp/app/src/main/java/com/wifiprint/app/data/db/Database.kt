@@ -1,7 +1,8 @@
 package com.wifiprint.app.data.db
 
 import androidx.room.*
-import androidx.room.migration.AutoMigrationSpec
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.wifiprint.app.data.models.PrintJob
 import com.wifiprint.app.data.models.ServerInfo
 import kotlinx.coroutines.flow.Flow
@@ -53,10 +54,20 @@ interface ServerDao {
 
 @Database(
     entities = [PrintJob::class, ServerInfo::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun printJobDao(): PrintJobDao
     abstract fun serverDao(): ServerDao
+
+    companion object {
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE servers ADD COLUMN certificateFingerprint TEXT")
+                db.execSQL("ALTER TABLE servers ADD COLUMN lastAuthCheckAt INTEGER")
+                db.execSQL("ALTER TABLE servers ADD COLUMN connectionHealth TEXT NOT NULL DEFAULT 'Unknown'")
+            }
+        }
+    }
 }

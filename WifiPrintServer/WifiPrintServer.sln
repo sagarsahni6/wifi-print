@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WifiPrintServer", "WifiPrintServer\WifiPrintServer.csproj", "{73A8C30D-15EC-4F60-A81B-8229482B6523}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WifiPrintServer.Tests", "WifiPrintServer.Tests\WifiPrintServer.Tests.csproj", "{AED476D9-1829-4545-8276-BF05D9613EF6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{73A8C30D-15EC-4F60-A81B-8229482B6523}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{73A8C30D-15EC-4F60-A81B-8229482B6523}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{73A8C30D-15EC-4F60-A81B-8229482B6523}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AED476D9-1829-4545-8276-BF05D9613EF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AED476D9-1829-4545-8276-BF05D9613EF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AED476D9-1829-4545-8276-BF05D9613EF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AED476D9-1829-4545-8276-BF05D9613EF6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

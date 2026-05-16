@@ -16,6 +16,7 @@ A cross-platform Wi-Fi printing system: **Android phone → Wi-Fi → Windows PC
 ### Android Client
 - Android 8.0+ (API 26)
 - Android Studio Hedgehog or newer
+- Android SDK Platform 34 + Build Tools 34.0.0
 - Both devices on the **same Wi-Fi network**
 
 ---
@@ -61,6 +62,11 @@ netsh advfirewall firewall add rule name="WiFi Print Server" dir=in action=allow
 - Open the `WifiPrintApp` folder in Android Studio
 - Let Gradle sync complete
 - Build and run on your device/emulator
+- If you build from the command line, create `WifiPrintApp/local.properties` with:
+
+```properties
+sdk.dir=C:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+```
 
 ### 2. Connect to Server
 1. Ensure phone and PC are on the **same Wi-Fi network**
@@ -151,10 +157,32 @@ WIFI PRINT/
 
 ## 🔐 Security Notes
 - Communication uses **HTTPS with self-signed certificate**
-- Devices pair via **6-digit PIN** (valid for 5 minutes)
+- Devices pair via **desktop approval** or legacy PIN flow
 - All API calls after pairing use **JWT bearer tokens**
-- The Android app trusts self-signed certs on the local network
+- The Android app now pins the server certificate fingerprint after first approval
 - Tokens expire after 365 days by default
+- Device-management endpoints are restricted to local desktop access
+- Job APIs are scoped to the authenticated device by default
+
+## ✅ Verification
+
+### Windows Server
+```bash
+dotnet build WifiPrintServer/WifiPrintServer.sln
+dotnet test WifiPrintServer/WifiPrintServer.sln
+```
+
+### Android App
+```bash
+cd WifiPrintApp
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest
+```
+
+## 🤖 CI
+- GitHub Actions workflow: `.github/workflows/ci.yml`
+- Server job: restore, build, and test the .NET solution on Windows
+- Android job: install SDK 34, assemble debug, run unit tests, and run lint
 
 ## ⚠️ Troubleshooting
 

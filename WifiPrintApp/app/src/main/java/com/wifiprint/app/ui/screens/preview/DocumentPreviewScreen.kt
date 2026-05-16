@@ -42,7 +42,6 @@ fun DocumentPreviewScreen(
     viewModel: DocumentPreviewViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
 
     LaunchedEffect(fileUriString) {
         viewModel.setFileUri(fileUriString)
@@ -125,6 +124,7 @@ private fun PdfPreview(
 ) {
     val context = LocalContext.current
     var bitmaps by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -132,29 +132,45 @@ private fun PdfPreview(
     // Render PDF pages
     LaunchedEffect(uri) {
         try {
-            val fd = context.contentResolver.openFileDescriptor(uri, "r") ?: return@LaunchedEffect
-            val renderer = PdfRenderer(fd)
             val pages = mutableListOf<Bitmap>()
-            for (i in 0 until renderer.pageCount) {
-                val page = renderer.openPage(i)
-                val bitmap = Bitmap.createBitmap(
-                    page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888
-                )
-                bitmap.eraseColor(android.graphics.Color.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
-                pages.add(bitmap)
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+                val renderer = PdfRenderer(fd)
+                try {
+                    for (i in 0 until renderer.pageCount) {
+                        val page = renderer.openPage(i)
+                        val bitmap = Bitmap.createBitmap(
+                            page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888
+                        )
+                        bitmap.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        pages.add(bitmap)
+                    }
+                } finally {
+                    renderer.close()
+                }
+            } ?: run {
+                errorMessage = "Could not open PDF file"
             }
-            renderer.close()
-            fd.close()
             bitmaps = pages
             onTotalPagesKnown(pages.size)
         } catch (e: Exception) {
-            // Handle error
+            android.util.Log.e("PdfPreview", "Failed to render PDF", e)
+            errorMessage = "Could not render PDF: ${e.message}"
         }
     }
 
-    if (bitmaps.isEmpty()) {
+    if (errorMessage != null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.ErrorOutline, null,
+                    modifier = Modifier.size(64.dp), tint = Red400)
+                Spacer(Modifier.height(16.dp))
+                Text(errorMessage!!, textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    } else if (bitmaps.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -318,9 +334,9 @@ private fun TextPreview(uri: Uri) {
 
     LaunchedEffect(uri) {
         try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            textContent = inputStream?.bufferedReader()?.readText() ?: "Cannot read file"
-            inputStream?.close()
+            textContent = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                inputStream.bufferedReader().readText()
+            } ?: "Cannot read file"
         } catch (e: Exception) {
             textContent = "Error reading file: ${e.message}"
         }

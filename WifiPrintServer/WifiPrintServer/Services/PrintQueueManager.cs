@@ -11,8 +11,11 @@ namespace WifiPrintServer.Services;
 public class PrintQueueManager : BackgroundService
 {
     private readonly ConcurrentDictionary<string, PrintJob> _jobs = new();
-    private readonly ConcurrentQueue<string> _pendingQueue = new();
+    private readonly HashSet<string> _queuedJobIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _queueLock = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeJobCancellations = new();
     private readonly PrinterService _printerService;
+    private readonly ServerStateStore _stateStore;
     private readonly ILogger<PrintQueueManager> _logger;
     private readonly SemaphoreSlim _signal = new(0);
 
@@ -21,9 +24,13 @@ public class PrintQueueManager : BackgroundService
     /// </summary>
     public event Action<JobStatusUpdate>? OnJobStatusChanged;
 
-    public PrintQueueManager(PrinterService printerService, ILogger<PrintQueueManager> logger)
+    public PrintQueueManager(
+        PrinterService printerService,
+        ServerStateStore stateStore,
+        ILogger<PrintQueueManager> logger)
     {
         _printerService = printerService;
+        _stateStore = stateStore;
         _logger = logger;
     }
 
@@ -33,14 +40,18 @@ public class PrintQueueManager : BackgroundService
     public string EnqueueJob(PrintJob job)
     {
         job.Status = PrintJobStatus.Pending;
+        job.QueueState = "Queued";
+        job.FailureCode = null;
+        job.ErrorMessage = null;
+        job.UpdatedAt = DateTime.UtcNow;
         _jobs[job.Id] = job;
-        _pendingQueue.Enqueue(job.Id);
-        _signal.Release(); // Wake the processing loop
+        QueueJob(job.Id);
 
         _logger.LogInformation("Job {JobId} enqueued: {File} for printer {Printer}",
             job.Id, job.OriginalFileName, job.PrinterName);
 
         EmitStatus(job, "Job queued");
+        PersistJob(job);
         return job.Id;
     }
 
@@ -79,8 +90,15 @@ public class PrintQueueManager : BackgroundService
             return false;
 
         job.Status = PrintJobStatus.Cancelled;
+        job.QueueState = "Cancelled";
+        job.FailureCode = "cancelled";
         job.CompletedAt = DateTime.UtcNow;
+        job.UpdatedAt = DateTime.UtcNow;
+        RemoveQueuedJob(jobId);
+        if (_activeJobCancellations.TryRemove(jobId, out var cts))
+            cts.Cancel();
         EmitStatus(job, "Job cancelled");
+        PersistJob(job);
 
         _logger.LogInformation("Job {JobId} cancelled", jobId);
         return true;
@@ -100,11 +118,15 @@ public class PrintQueueManager : BackgroundService
         job.RetryCount++;
         job.Status = PrintJobStatus.Pending;
         job.ErrorMessage = null;
+        job.FailureCode = null;
         job.Progress = 0;
-        _pendingQueue.Enqueue(jobId);
-        _signal.Release();
+        job.CompletedAt = null;
+        job.QueueState = "Queued";
+        job.UpdatedAt = DateTime.UtcNow;
+        QueueJob(jobId);
 
         EmitStatus(job, $"Job retry #{job.RetryCount}");
+        PersistJob(job);
         _logger.LogInformation("Job {JobId} retrying (attempt {Retry})", jobId, job.RetryCount);
         return true;
     }
@@ -121,7 +143,9 @@ public class PrintQueueManager : BackgroundService
             return false;
 
         job.Priority = priority;
+        job.UpdatedAt = DateTime.UtcNow;
         EmitStatus(job, $"Priority changed to {priority}");
+        PersistJob(job);
         _logger.LogInformation("Job {JobId} priority set to {Priority}", jobId, priority);
         return true;
     }
@@ -138,7 +162,11 @@ public class PrintQueueManager : BackgroundService
             return false;
 
         job.Status = PrintJobStatus.Paused;
+        job.QueueState = "Paused";
+        job.UpdatedAt = DateTime.UtcNow;
+        RemoveQueuedJob(jobId);
         EmitStatus(job, "Job paused");
+        PersistJob(job);
         _logger.LogInformation("Job {JobId} paused", jobId);
         return true;
     }
@@ -155,10 +183,12 @@ public class PrintQueueManager : BackgroundService
             return false;
 
         job.Status = PrintJobStatus.Pending;
-        _pendingQueue.Enqueue(jobId);
-        _signal.Release();
+        job.QueueState = "Queued";
+        job.UpdatedAt = DateTime.UtcNow;
+        QueueJob(jobId);
 
         EmitStatus(job, "Job resumed");
+        PersistJob(job);
         _logger.LogInformation("Job {JobId} resumed", jobId);
         return true;
     }
@@ -168,12 +198,52 @@ public class PrintQueueManager : BackgroundService
     /// </summary>
     public int GetQueuePosition(string jobId)
     {
-        var pending = _pendingQueue.ToArray();
-        for (int i = 0; i < pending.Length; i++)
+        lock (_queueLock)
         {
-            if (pending[i] == jobId) return i + 1;
+            var pending = GetOrderedQueuedJobIds();
+            for (int i = 0; i < pending.Count; i++)
+            {
+                if (pending[i] == jobId)
+                    return i + 1;
+            }
+
+            return 0;
         }
-        return 0;
+    }
+
+    public void RestoreJobs()
+    {
+        var storedJobs = _stateStore.LoadJobs();
+        foreach (var job in storedJobs)
+        {
+            if (job.Status is PrintJobStatus.Completed or PrintJobStatus.Cancelled or PrintJobStatus.Failed)
+            {
+                _jobs[job.Id] = job;
+                continue;
+            }
+
+            if (job.Status == PrintJobStatus.Paused)
+            {
+                job.QueueState = "Paused";
+                job.UpdatedAt = DateTime.UtcNow;
+                _jobs[job.Id] = job;
+                PersistJob(job);
+                continue;
+            }
+
+            job.Status = PrintJobStatus.Pending;
+            job.QueueState = "Queued";
+            job.ErrorMessage = null;
+            job.FailureCode = null;
+            job.Progress = 0;
+            job.UpdatedAt = DateTime.UtcNow;
+            _jobs[job.Id] = job;
+            QueueJob(job.Id);
+            PersistJob(job);
+        }
+
+        if (storedJobs.Count > 0)
+            _logger.LogInformation("Recovered {Count} jobs from persistent store", storedJobs.Count);
     }
 
     /// <summary>
@@ -188,7 +258,7 @@ public class PrintQueueManager : BackgroundService
         {
             await _signal.WaitAsync(stoppingToken);
 
-            if (!_pendingQueue.TryDequeue(out var jobId))
+            if (!TryDequeueNextJob(out var jobId))
                 continue;
 
             if (!_jobs.TryGetValue(jobId, out var job))
@@ -211,65 +281,94 @@ public class PrintQueueManager : BackgroundService
     /// </summary>
     private async Task ProcessJobAsync(PrintJob job, CancellationToken ct)
     {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (!_activeJobCancellations.TryAdd(job.Id, linkedCts))
+            return;
+
         try
         {
             // Mark as printing
             job.Status = PrintJobStatus.Printing;
             job.StartedAt = DateTime.UtcNow;
+            job.QueueState = "Active";
+            job.UpdatedAt = DateTime.UtcNow;
             EmitStatus(job, "Printing started");
+            PersistJob(job);
 
             // Determine file to print (original or converted)
             string fileToPrint = job.ConvertedFilePath ?? job.FilePath;
 
             if (!File.Exists(fileToPrint))
             {
-                FailJob(job, "File not found on server");
+                FailJob(job, "file_missing", "File not found on server");
                 return;
             }
 
             // Send to printer
-            bool success = await _printerService.PrintFileAsync(
+            var printResult = await _printerService.PrintFileAsync(
                 fileToPrint,
                 job.PrinterName,
                 job.Settings,
                 progress =>
                 {
                     job.Progress = progress;
+                    job.UpdatedAt = DateTime.UtcNow;
                     EmitStatus(job, $"Printing... {progress}%");
+                    PersistJob(job);
                 },
-                ct);
+                linkedCts.Token);
 
-            if (success)
+            if (printResult.Success)
             {
                 job.Status = PrintJobStatus.Completed;
                 job.Progress = 100;
                 job.CompletedAt = DateTime.UtcNow;
+                job.QueueState = "Completed";
+                job.FailureCode = null;
+                job.ErrorMessage = null;
+                job.UpdatedAt = DateTime.UtcNow;
                 EmitStatus(job, "Print completed");
+                PersistJob(job);
                 _logger.LogInformation("Job {JobId} completed successfully", job.Id);
             }
             else
             {
-                FailJob(job, "Printer failed to process the document");
+                FailJob(job, printResult.FailureCode ?? "print_failed",
+                    printResult.ErrorMessage ?? "Printer failed to process the document");
             }
         }
         catch (OperationCanceledException)
         {
             job.Status = PrintJobStatus.Cancelled;
+            job.QueueState = "Cancelled";
+            job.FailureCode = "cancelled";
+            job.CompletedAt = DateTime.UtcNow;
+            job.UpdatedAt = DateTime.UtcNow;
             EmitStatus(job, "Job cancelled");
+            PersistJob(job);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Job {JobId} failed with exception", job.Id);
-            FailJob(job, ex.Message);
+            FailJob(job, "exception", ex.Message);
+        }
+        finally
+        {
+            if (_activeJobCancellations.TryRemove(job.Id, out var activeCts))
+                activeCts.Dispose();
         }
     }
 
-    private void FailJob(PrintJob job, string error)
+    private void FailJob(PrintJob job, string failureCode, string error)
     {
         job.Status = PrintJobStatus.Failed;
         job.ErrorMessage = error;
+        job.FailureCode = failureCode;
         job.CompletedAt = DateTime.UtcNow;
+        job.QueueState = "Failed";
+        job.UpdatedAt = DateTime.UtcNow;
         EmitStatus(job, $"Failed: {error}");
+        PersistJob(job);
         _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, error);
     }
 
@@ -280,8 +379,67 @@ public class PrintQueueManager : BackgroundService
             JobId = job.Id,
             Status = job.Status.ToString(),
             Progress = job.Progress,
-            Message = message
+            Message = message,
+            QueueState = job.QueueState,
+            FailureCode = job.FailureCode,
+            FailureMessage = job.ErrorMessage,
+            SourceDeviceId = job.DeviceId
         });
+    }
+
+    private void QueueJob(string jobId)
+    {
+        lock (_queueLock)
+        {
+            if (_queuedJobIds.Add(jobId))
+                _signal.Release();
+        }
+    }
+
+    private void RemoveQueuedJob(string jobId)
+    {
+        lock (_queueLock)
+        {
+            _queuedJobIds.Remove(jobId);
+        }
+    }
+
+    private bool TryDequeueNextJob(out string jobId)
+    {
+        lock (_queueLock)
+        {
+            var ordered = GetOrderedQueuedJobIds();
+            if (ordered.Count == 0)
+            {
+                jobId = string.Empty;
+                return false;
+            }
+
+            jobId = ordered[0];
+            _queuedJobIds.Remove(jobId);
+            return true;
+        }
+    }
+
+    private List<string> GetOrderedQueuedJobIds() =>
+        _queuedJobIds
+            .Select(id => _jobs.TryGetValue(id, out var job) ? job : null)
+            .Where(job => job != null && job.Status == PrintJobStatus.Pending)
+            .OrderBy(job => GetPriorityOrder(job!.Priority))
+            .ThenBy(job => job!.CreatedAt)
+            .Select(job => job!.Id)
+            .ToList();
+
+    private void PersistJob(PrintJob job)
+    {
+        try
+        {
+            _stateStore.UpsertJob(job);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist job {JobId}", job.Id);
+        }
     }
 
     private static int GetPriorityOrder(string priority) => priority switch

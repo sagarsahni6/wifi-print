@@ -79,16 +79,26 @@ class PrintUploadWorker @AssistedInject constructor(
                     Result.success(workDataOf(KEY_JOB_ID to response.jobId))
                 },
                 onFailure = { e ->
-                    if (runAttemptCount < 3) {
+                    val message = e.message ?: "Upload failed"
+                    if (shouldRetry(message) && runAttemptCount < 3) {
                         Result.retry()
                     } else {
-                        Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Upload failed")))
+                        Result.failure(workDataOf(KEY_ERROR to message))
                     }
                 }
             )
         } catch (e: Exception) {
-            if (runAttemptCount < 3) Result.retry()
-            else Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Upload failed")))
+            val message = e.message ?: "Upload failed"
+            if (shouldRetry(message) && runAttemptCount < 3) Result.retry()
+            else Result.failure(workDataOf(KEY_ERROR to message))
         }
+    }
+
+    private fun shouldRetry(message: String): Boolean {
+        val normalized = message.lowercase()
+        return "blocked" !in normalized &&
+            "session expired" !in normalized &&
+            "no longer approved" !in normalized &&
+            "trusted server certificate" !in normalized
     }
 }

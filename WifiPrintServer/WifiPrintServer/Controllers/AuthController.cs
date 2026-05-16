@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WifiPrintServer.Models;
+using WifiPrintServer.Security;
 using WifiPrintServer.Services;
 
 namespace WifiPrintServer.Controllers;
@@ -112,7 +113,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// GET /api/auth/devices — List all paired devices.
     /// </summary>
-    [Authorize]
+    [LocalOnly]
     [HttpGet("devices")]
     public IActionResult GetDevices()
     {
@@ -122,36 +123,36 @@ public class AuthController : ControllerBase
     /// <summary>
     /// POST /api/auth/devices/{id}/block — Block a paired device.
     /// </summary>
-    [AllowAnonymous] // Accessed from PC UI, not from Android
+    [LocalOnly]
     [HttpPost("devices/{id}/block")]
     public IActionResult BlockDevice(string id)
     {
         if (_authService.BlockDevice(id))
-            return Ok(ApiResponse<object>.Ok(null, "Device blocked"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Device blocked"));
         return NotFound(ApiResponse<object>.Fail("Device not found"));
     }
 
     /// <summary>
     /// POST /api/auth/devices/{id}/unblock — Unblock a paired device.
     /// </summary>
-    [AllowAnonymous]
+    [LocalOnly]
     [HttpPost("devices/{id}/unblock")]
     public IActionResult UnblockDevice(string id)
     {
         if (_authService.UnblockDevice(id))
-            return Ok(ApiResponse<object>.Ok(null, "Device unblocked"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Device unblocked"));
         return NotFound(ApiResponse<object>.Fail("Device not found"));
     }
 
     /// <summary>
     /// DELETE /api/auth/devices/{id} — Remove a paired device.
     /// </summary>
-    [AllowAnonymous]
+    [LocalOnly]
     [HttpDelete("devices/{id}")]
     public IActionResult RemoveDevice(string id)
     {
         if (_authService.RemoveDevice(id))
-            return Ok(ApiResponse<object>.Ok(null, "Device removed"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Device removed"));
         return NotFound(ApiResponse<object>.Fail("Device not found"));
     }
 }
@@ -173,16 +174,30 @@ public class ConnectionRequest
 [Route("api/[controller]")]
 public class StatusController : ControllerBase
 {
+    private readonly PrinterService _printerService;
+
+    public StatusController(PrinterService printerService)
+    {
+        _printerService = printerService;
+    }
+
     [AllowAnonymous]
     [HttpGet]
     public IActionResult Get()
     {
-        return Ok(new
+        var printerCount = _printerService.GetAllPrinters().Count;
+        var response = new ServerStatusResponse
         {
             Status = "Online",
             ServerName = Environment.MachineName,
             Version = "1.0.0",
-            Timestamp = DateTime.UtcNow
-        });
+            Timestamp = DateTime.UtcNow,
+            RequiresPairing = true,
+            PrinterAvailable = printerCount > 0,
+            PrinterCount = printerCount,
+            Readiness = printerCount > 0 ? "Ready" : "Degraded"
+        };
+
+        return Ok(response);
     }
 }

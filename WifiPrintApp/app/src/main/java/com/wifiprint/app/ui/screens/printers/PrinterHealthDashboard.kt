@@ -73,20 +73,20 @@ fun PrinterHealthDashboard(
 
                 if (printer.tonerLevelPercent != null) {
                     // Laser printer — single toner
-                    SupplyLevel("Toner", printer.tonerLevelPercent!!, Color(0xFF2D2D2D))
+                    SupplyLevel("Toner", printer.tonerLevelPercent, Color(0xFF2D2D2D))
                 }
 
                 if (printer.inkLevelBlack != null) {
-                    SupplyLevel("Black", printer.inkLevelBlack!!, Color(0xFF2D2D2D))
+                    SupplyLevel("Black", printer.inkLevelBlack, Color(0xFF2D2D2D))
                 }
                 if (printer.inkLevelCyan != null) {
-                    SupplyLevel("Cyan", printer.inkLevelCyan!!, Color(0xFF00BCD4))
+                    SupplyLevel("Cyan", printer.inkLevelCyan, Color(0xFF00BCD4))
                 }
                 if (printer.inkLevelMagenta != null) {
-                    SupplyLevel("Magenta", printer.inkLevelMagenta!!, Color(0xFFE91E63))
+                    SupplyLevel("Magenta", printer.inkLevelMagenta, Color(0xFFE91E63))
                 }
                 if (printer.inkLevelYellow != null) {
-                    SupplyLevel("Yellow", printer.inkLevelYellow!!, Color(0xFFFFC107))
+                    SupplyLevel("Yellow", printer.inkLevelYellow, Color(0xFFFFC107))
                 }
 
                 if (printer.tonerLevelPercent == null && printer.inkLevelBlack == null) {
@@ -181,7 +181,7 @@ fun PrinterHealthDashboard(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text("Last Error", fontWeight = FontWeight.SemiBold, color = Red400)
-                        Text(printer.lastError!!, style = MaterialTheme.typography.bodySmall,
+                        Text(printer.lastError, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface)
                     }
                 }

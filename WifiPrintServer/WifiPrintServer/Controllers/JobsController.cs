@@ -30,7 +30,10 @@ public class JobsController : ControllerBase
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<PrintJobStatus>(status, true, out var s))
             filter = s;
 
-        var jobs = _queueManager.GetAllJobs(filter);
+        var deviceId = User.FindFirst("deviceId")?.Value;
+        var jobs = _queueManager.GetAllJobs(filter)
+            .Where(job => string.Equals(job.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         return Ok(ApiResponse<List<PrintJob>>.Ok(jobs));
     }
 
@@ -41,7 +44,9 @@ public class JobsController : ControllerBase
     public IActionResult GetById(string id)
     {
         var job = _queueManager.GetJob(id);
-        if (job == null) return NotFound(ApiResponse<object>.Fail("Job not found"));
+        var deviceId = User.FindFirst("deviceId")?.Value;
+        if (job == null || !string.Equals(job.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
         return Ok(ApiResponse<PrintJob>.Ok(job));
     }
 
@@ -51,8 +56,11 @@ public class JobsController : ControllerBase
     [HttpPost("{id}/cancel")]
     public IActionResult Cancel(string id)
     {
+        if (!CanAccessJob(id))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
+
         if (_queueManager.CancelJob(id))
-            return Ok(ApiResponse<object>.Ok(new { }, "Job cancelled"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Job cancelled"));
         return BadRequest(ApiResponse<object>.Fail("Cannot cancel this job"));
     }
 
@@ -62,8 +70,11 @@ public class JobsController : ControllerBase
     [HttpPost("{id}/retry")]
     public IActionResult Retry(string id)
     {
+        if (!CanAccessJob(id))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
+
         if (_queueManager.RetryJob(id))
-            return Ok(ApiResponse<object>.Ok(new { }, "Job requeued for retry"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Job requeued for retry"));
         return BadRequest(ApiResponse<object>.Fail("Cannot retry this job"));
     }
 
@@ -73,8 +84,11 @@ public class JobsController : ControllerBase
     [HttpPost("{id}/priority")]
     public IActionResult SetPriority(string id, [FromBody] PriorityRequest request)
     {
+        if (!CanAccessJob(id))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
+
         if (_queueManager.SetJobPriority(id, request.Priority))
-            return Ok(ApiResponse<object>.Ok(new { }, $"Priority set to {request.Priority}"));
+            return Ok(ApiResponse<object>.Ok(new object(), $"Priority set to {request.Priority}"));
         return BadRequest(ApiResponse<object>.Fail("Cannot change priority of this job"));
     }
 
@@ -84,8 +98,11 @@ public class JobsController : ControllerBase
     [HttpPost("{id}/pause")]
     public IActionResult Pause(string id)
     {
+        if (!CanAccessJob(id))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
+
         if (_queueManager.PauseJob(id))
-            return Ok(ApiResponse<object>.Ok(new { }, "Job paused"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Job paused"));
         return BadRequest(ApiResponse<object>.Fail("Cannot pause this job"));
     }
 
@@ -95,9 +112,19 @@ public class JobsController : ControllerBase
     [HttpPost("{id}/resume")]
     public IActionResult Resume(string id)
     {
+        if (!CanAccessJob(id))
+            return NotFound(ApiResponse<object>.Fail("Job not found"));
+
         if (_queueManager.ResumeJob(id))
-            return Ok(ApiResponse<object>.Ok(new { }, "Job resumed"));
+            return Ok(ApiResponse<object>.Ok(new object(), "Job resumed"));
         return BadRequest(ApiResponse<object>.Fail("Cannot resume this job"));
+    }
+
+    private bool CanAccessJob(string jobId)
+    {
+        var deviceId = User.FindFirst("deviceId")?.Value;
+        var job = _queueManager.GetJob(jobId);
+        return job != null && string.Equals(job.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase);
     }
 }
 

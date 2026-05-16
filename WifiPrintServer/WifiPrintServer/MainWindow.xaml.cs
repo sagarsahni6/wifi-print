@@ -84,6 +84,9 @@ public partial class MainWindow : Window
             _eventsWired = true;
             _eventWiringTimer.Stop();
             AppendLog($"[{DateTime.Now:HH:mm:ss}] ✓ Server ready — all services connected");
+
+            // Generate the connection QR code for the dashboard
+            GenerateConnectionQrCode();
         }
     }
 
@@ -304,6 +307,55 @@ public partial class MainWindow : Window
                 key?.DeleteValue("WifiPrintServer", false);
         }
         catch (Exception ex) { AppendLog($"Auto-start error: {ex.Message}"); }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  QR Code Generation
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Generates and displays the connection QR code on the dashboard.
+    /// The QR encodes: { ip, port, name, cert } so phones can connect instantly.
+    /// </summary>
+    private void GenerateConnectionQrCode()
+    {
+        try
+        {
+            var ip = DiscoveryService.GetLocalIpAddress();
+            var port = Program.Settings.ServerPort;
+            var name = Program.Settings.ServerName;
+            var cert = Program.ServerCertificate;
+
+            var qrImage = QrCodeService.GenerateConnectionQrCode(ip, port, name, cert);
+            QrCodeImage.Source = qrImage;
+            QrInfoText.Text = $"{ip}:{port}";
+
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready — scan from your phone to connect");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ QR code generation failed: {ex.Message}");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Cross-Promotion: Download Android App
+    // ═══════════════════════════════════════════════════════════════
+
+    private void DownloadApp_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/sagarsahni6/wifi-print/releases",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open browser: {ex.Message}");
+        }
     }
 
     private void AppendLog(string message)

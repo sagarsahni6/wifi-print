@@ -7,6 +7,7 @@ namespace WifiPrintServer.Hubs;
 /// SignalR hub for real-time print job status updates.
 /// Android clients connect to receive live progress on their print jobs.
 /// </summary>
+[Authorize]
 public class PrintStatusHub : Hub
 {
     private readonly ILogger<PrintStatusHub> _logger;
@@ -16,10 +17,14 @@ public class PrintStatusHub : Hub
         _logger = logger;
     }
 
-    public override Task OnConnectedAsync()
+    public override async Task OnConnectedAsync()
     {
+        var deviceId = Context.User?.FindFirst("deviceId")?.Value;
+        if (!string.IsNullOrWhiteSpace(deviceId))
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"device_{deviceId}");
+
         _logger.LogInformation("Client connected to StatusHub: {Id}", Context.ConnectionId);
-        return base.OnConnectedAsync();
+        await base.OnConnectedAsync();
     }
 
     public override Task OnDisconnectedAsync(Exception? exception)
@@ -62,6 +67,7 @@ public class StatusBroadcaster
     {
         await _hubContext.Clients.Group($"job_{update.JobId}")
             .SendAsync("JobStatusUpdate", update);
-        await _hubContext.Clients.All.SendAsync("JobStatusUpdate", update);
+        await _hubContext.Clients.Group($"device_{update.SourceDeviceId}")
+            .SendAsync("JobStatusUpdate", update);
     }
 }

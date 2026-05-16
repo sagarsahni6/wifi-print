@@ -1,0 +1,34 @@
+# WiFi Print
+
+> Free wireless printing app for Android to Windows PC
+
+WiFi Print is a free, open-source, cross-platform wireless printing system. It connects your Android phone to your Windows PC over Wi-Fi and lets you print documents directly to any installed printer — no cloud services, no cables, no subscriptions.
+
+## Features
+
+- **Wi-Fi Printing**: Print PDF, DOCX, images (JPEG, PNG, WebP) from Android to any Windows PC printer
+- **Document Scanner**: AI-powered edge detection, perspective correction, and smart cropping
+- **ID Card Scanner**: Scan front and back of ID cards, automatically merged onto a single page
+- **Passport Photo Templates**: Built-in templates for passport (35×45mm), visa (2×2 inch), and wallet photos
+- **Zero Configuration**: Auto-discovery via mDNS — no manual IP entry
+- **P2P Security**: Encrypted HTTPS connection with JWT authentication
+- **Real-time Updates**: Live print status via SignalR WebSockets
+- **Share to Print**: Print from any app via Android's share menu
+- **Broad Compatibility**: Works with HP, Canon, Epson, Brother, Samsung, Lexmark, Xerox, Ricoh, Kyocera, and any other printer brand
+
+## Links
+
+- [Website](https://wifiprint.calclabz.com/)
+- [Download Android App](https://wifiprint.calclabz.com/#download)
+
+## How It Works
+
+1. Run the WiFi Print Server on your Windows 10/11 PC
+2. Open the WiFi Print app on your Android device (same Wi-Fi network)
+3. Enter the pairing PIN and select your document — print instantly
+
+## System Requirements
+
+- **Android**: Android 8.0 (Oreo) or newer
+- **Windows**: Windows 10 or Windows 11 with .NET 8 Runtime
+- **Network**: Local Wi-Fi connection (no internet required)

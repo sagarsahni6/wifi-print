@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WifiPrintServer.Models;
+using WifiPrintServer.Security;
 using WifiPrintServer.Services;
 
 namespace WifiPrintServer.Controllers;
@@ -8,6 +9,7 @@ namespace WifiPrintServer.Controllers;
 /// <summary>
 /// Lists available printers and manages default printer settings.
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class PrintersController : ControllerBase
@@ -22,7 +24,6 @@ public class PrintersController : ControllerBase
     /// <summary>
     /// GET /api/printers — Returns all installed printers.
     /// </summary>
-    [AllowAnonymous]
     [HttpGet]
     public IActionResult GetAll()
     {
@@ -33,7 +34,6 @@ public class PrintersController : ControllerBase
     /// <summary>
     /// GET /api/printers/{id} — Returns a specific printer with capabilities.
     /// </summary>
-    [AllowAnonymous]
     [HttpGet("{id}")]
     public IActionResult GetById(string id)
     {
@@ -47,7 +47,7 @@ public class PrintersController : ControllerBase
     /// POST /api/printers/default — Set the default printer for WiFi Print.
     /// Expects a JSON body: { "printerName": "HP LaserJet Pro" }
     /// </summary>
-    [AllowAnonymous]
+    [LocalOnly]
     [HttpPost("default")]
     public IActionResult SetDefault([FromBody] SetDefaultPrinterRequest request)
     {
@@ -61,7 +61,7 @@ public class PrintersController : ControllerBase
             return NotFound(ApiResponse<object>.Fail($"Printer '{request.PrinterName}' not found"));
 
         _printerService.SetDefaultPrinter(request.PrinterName);
-        return Ok(ApiResponse<object>.Ok(null, $"Default printer set to: {request.PrinterName}"));
+        return Ok(ApiResponse<object>.Ok(new object(), $"Default printer set to: {request.PrinterName}"));
     }
 }
 

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "codex/**"
+  pull_request:
+
+jobs:
+  server:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore WifiPrintServer/WifiPrintServer.sln
+      - name: Build
+        run: dotnet build WifiPrintServer/WifiPrintServer.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test WifiPrintServer/WifiPrintServer.sln --configuration Release --no-build
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Create local.properties
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > WifiPrintApp/local.properties
+      - name: Assemble Debug
+        working-directory: WifiPrintApp
+        run: ./gradlew :app:assembleDebug
+      - name: Unit Tests
+        working-directory: WifiPrintApp
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Lint
+        working-directory: WifiPrintApp
+        run: ./gradlew :app:lintDebug

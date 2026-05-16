@@ -30,6 +30,7 @@ public class FileProcessingService
     public async Task<(string? FilePath, string? Error)> SaveAndValidateFileAsync(
         Stream fileStream, string fileName, long fileSize)
     {
+        fileName = Path.GetFileName(fileName);
         var ext = Path.GetExtension(fileName);
         if (!SupportedExtensions.Contains(ext))
             return (null, $"Unsupported file type: {ext}");

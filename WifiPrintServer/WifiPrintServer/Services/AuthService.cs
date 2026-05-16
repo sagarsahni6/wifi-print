@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
 using WifiPrintServer.Models;
 
@@ -17,12 +16,9 @@ public class AuthService
 {
     private readonly AppSettings _settings;
     private readonly ILogger<AuthService> _logger;
+    private readonly ServerStateStore _stateStore;
     private readonly ConcurrentDictionary<string, DeviceInfo> _pairedDevices = new();
     private readonly ConcurrentDictionary<string, PendingApproval> _pendingApprovals = new();
-
-    private static readonly string DevicesFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WifiPrintServer", "paired_devices.json");
 
     /// <summary>Fired when a new device requests connection — UI shows approval dialog.</summary>
     public event Action<PendingApproval>? OnApprovalRequested;
@@ -30,10 +26,11 @@ public class AuthService
     /// <summary>Fired when a device is approved and paired.</summary>
     public event Action<DeviceInfo>? OnDevicePaired;
 
-    public AuthService(AppSettings settings, ILogger<AuthService> logger)
+    public AuthService(AppSettings settings, ILogger<AuthService> logger, ServerStateStore stateStore)
     {
         _settings = settings;
         _logger = logger;
+        _stateStore = stateStore;
         LoadPairedDevices();
     }
 
@@ -56,6 +53,7 @@ public class AuthService
         };
 
         _pendingApprovals[approval.Id] = approval;
+        _stateStore.UpsertApproval(approval, "Pending");
         _logger.LogInformation("Connection request from {Name} ({Model}) at {Ip}",
             deviceName, deviceModel, ipAddress);
 
@@ -67,9 +65,7 @@ public class AuthService
         }
         else
         {
-            _logger.LogWarning("⚠️ No approval handler registered! UI may not be showing the approval popup. Auto-approving...");
-            // If no UI is connected, auto-approve to prevent hanging
-            approval.CompletionSource.TrySetResult(true);
+            _logger.LogWarning("No approval handler registered; request will time out unless approved locally");
         }
 
         try
@@ -86,6 +82,7 @@ public class AuthService
                 var device = new DeviceInfo
                 {
                     Name = deviceName,
+                    Model = deviceModel,
                     IpAddress = ipAddress
                 };
 
@@ -93,6 +90,7 @@ public class AuthService
                 device.Token = token;
                 _pairedDevices[device.Id] = device;
                 SavePairedDevices();
+                _stateStore.UpsertApproval(approval, "Approved");
 
                 _logger.LogInformation("Device approved: {Name} ({Id})", device.Name, device.Id);
                 OnDevicePaired?.Invoke(device);
@@ -107,6 +105,7 @@ public class AuthService
             }
             else
             {
+                _stateStore.UpsertApproval(approval, "Denied");
                 _logger.LogInformation("Device denied: {Name}", deviceName);
                 return null;
             }
@@ -114,6 +113,7 @@ public class AuthService
         catch (OperationCanceledException)
         {
             _pendingApprovals.TryRemove(approval.Id, out _);
+            _stateStore.UpsertApproval(approval, "TimedOut");
             _logger.LogInformation("Connection request timed out for {Name}", deviceName);
             return null;
         }
@@ -125,6 +125,7 @@ public class AuthService
         if (_pendingApprovals.TryGetValue(approvalId, out var approval))
         {
             approval.CompletionSource.TrySetResult(true);
+            _stateStore.UpsertApproval(approval, "Approved");
             _logger.LogInformation("Approval granted for {Name}", approval.DeviceName);
         }
     }
@@ -135,6 +136,7 @@ public class AuthService
         if (_pendingApprovals.TryGetValue(approvalId, out var approval))
         {
             approval.CompletionSource.TrySetResult(false);
+            _stateStore.UpsertApproval(approval, "Denied");
             _logger.LogInformation("Approval denied for {Name}", approval.DeviceName);
         }
     }
@@ -183,7 +185,24 @@ public class AuthService
                 IssuerSigningKey = key
             }, out _);
 
-            return principal.FindFirst("deviceId")?.Value;
+            var deviceId = principal.FindFirst("deviceId")?.Value;
+
+            // Ensure the device is still paired and not blocked/removed
+            if (deviceId != null)
+            {
+                if (!_pairedDevices.ContainsKey(deviceId))
+                {
+                    _logger.LogWarning("Token valid but device {Id} was removed — rejecting", deviceId);
+                    return null;
+                }
+                if (IsDeviceBlocked(deviceId))
+                {
+                    _logger.LogWarning("Token valid but device {Id} is blocked — rejecting", deviceId);
+                    return null;
+                }
+            }
+
+            return deviceId;
         }
         catch { return null; }
     }
@@ -203,7 +222,11 @@ public class AuthService
     public bool RemoveDevice(string deviceId)
     {
         var result = _pairedDevices.TryRemove(deviceId, out _);
-        if (result) SavePairedDevices();
+        if (result)
+        {
+            _stateStore.DeleteDevice(deviceId);
+            SavePairedDevices();
+        }
         return result;
     }
 
@@ -239,22 +262,24 @@ public class AuthService
         return _pairedDevices.TryGetValue(deviceId, out var device) && device.IsBlocked;
     }
 
+    public void MarkDeviceSeen(string deviceId)
+    {
+        if (!_pairedDevices.TryGetValue(deviceId, out var device))
+            return;
+
+        device.LastSeenAt = DateTime.UtcNow;
+        SavePairedDevices();
+    }
+
     private void LoadPairedDevices()
     {
         try
         {
-            if (File.Exists(DevicesFilePath))
-            {
-                var json = File.ReadAllText(DevicesFilePath);
-                var devices = JsonSerializer.Deserialize<List<DeviceInfo>>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (devices != null)
-                {
-                    foreach (var d in devices)
-                        _pairedDevices[d.Id] = d;
-                    _logger.LogInformation("Loaded {Count} paired devices from disk", devices.Count);
-                }
-            }
+            var devices = _stateStore.LoadDevices();
+            foreach (var device in devices)
+                _pairedDevices[device.Id] = device;
+
+            _logger.LogInformation("Loaded {Count} paired devices from persistent store", devices.Count);
         }
         catch (Exception ex)
         {
@@ -266,10 +291,8 @@ public class AuthService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(DevicesFilePath)!);
-            var json = JsonSerializer.Serialize(_pairedDevices.Values.ToList(),
-                new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(DevicesFilePath, json);
+            foreach (var device in _pairedDevices.Values)
+                _stateStore.UpsertDevice(device);
         }
         catch (Exception ex)
         {

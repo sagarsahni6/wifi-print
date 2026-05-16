@@ -45,7 +45,10 @@ public class PrintController : ControllerBase
         [FromForm] string? settingsJson)
     {
         // Check if the device is blocked
-        var deviceId = User.FindFirst("deviceId")?.Value ?? "unknown";
+        var deviceId = User.FindFirst("deviceId")?.Value;
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return Unauthorized(ApiResponse<object>.Fail("Missing device identity"));
+
         if (_authService.IsDeviceBlocked(deviceId))
             return StatusCode(403, ApiResponse<object>.Fail("Device is blocked by the server administrator"));
 
@@ -110,7 +113,9 @@ public class PrintController : ControllerBase
             Settings = settings,
             PrinterName = printerName,
             DeviceId = deviceId,
-            DeviceName = deviceName
+            DeviceName = deviceName,
+            QueueState = "Queued",
+            UpdatedAt = DateTime.UtcNow
         };
 
         var jobId = _queueManager.EnqueueJob(job);

@@ -20,6 +20,7 @@ data class HomeUiState(
     val wifiSsid: String = "",
     val serverName: String = "Not connected",
     val serverIp: String = "",
+    val connectionMessage: String? = null,
     val recentJobs: List<PrintJob> = emptyList(),
     val activeJobCount: Int = 0,
     val completedJobCount: Int = 0
@@ -66,7 +67,8 @@ class HomeViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isConnected = false,
-                            serverName = "Not connected"
+                            serverName = "Not connected",
+                            connectionMessage = "WiFi disconnected. Reconnect to the same LAN to print."
                         )
                     }
                 } else {
@@ -141,20 +143,33 @@ class HomeViewModel @Inject constructor(
                                 isConnected = true,
                                 isConnecting = false,
                                 serverName = server.name,
-                                serverIp = "${server.ipAddress}:${server.port}"
+                                serverIp = "${server.ipAddress}:${server.port}",
+                                connectionMessage = null
                             )
                         }
                     } else {
                         Log.w(TAG, "Auto-connect failed verification for ${server.name}")
-                        _uiState.update { it.copy(isConnected = false, isConnecting = false) }
+                        _uiState.update {
+                            it.copy(
+                                isConnected = false,
+                                isConnecting = false,
+                                connectionMessage = "Saved server trust or approval is no longer valid. Open Connect to re-approve."
+                            )
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Auto-connect failed: ${e.message}")
-                    _uiState.update { it.copy(isConnected = false, isConnecting = false) }
+                    _uiState.update {
+                        it.copy(
+                            isConnected = false,
+                            isConnecting = false,
+                            connectionMessage = e.message ?: "Failed to reconnect to the saved server"
+                        )
+                    }
                 }
             } else {
                 Log.d(TAG, "No paired server found")
-                _uiState.update { it.copy(isConnecting = false) }
+                _uiState.update { it.copy(isConnecting = false, connectionMessage = null) }
             }
         }
     }

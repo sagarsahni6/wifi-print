@@ -6,7 +6,7 @@ public partial class App : Application
 {
     private System.Windows.Forms.NotifyIcon? _trayIcon;
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -49,9 +49,12 @@ public partial class App : Application
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("Open Dashboard", null, (s, e) =>
         {
-            MainWindow?.Show();
-            MainWindow.WindowState = WindowState.Normal;
-            MainWindow?.Activate();
+            if (MainWindow is { } mainWindow)
+            {
+                mainWindow.Show();
+                mainWindow.WindowState = WindowState.Normal;
+                mainWindow.Activate();
+            }
         });
         menu.Items.Add("-");
         menu.Items.Add("Exit", null, (s, e) =>
@@ -64,9 +67,12 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip = menu;
         _trayIcon.DoubleClick += (s, e) =>
         {
-            MainWindow?.Show();
-            MainWindow.WindowState = WindowState.Normal;
-            MainWindow?.Activate();
+            if (MainWindow is { } mainWindow)
+            {
+                mainWindow.Show();
+                mainWindow.WindowState = WindowState.Normal;
+                mainWindow.Activate();
+            }
         };
     }
 

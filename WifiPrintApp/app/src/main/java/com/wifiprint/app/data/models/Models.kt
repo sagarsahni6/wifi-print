@@ -13,8 +13,11 @@ data class ServerInfo(
     val ipAddress: String,
     val port: Int,
     val token: String? = null,
+    val certificateFingerprint: String? = null,
     val isPaired: Boolean = false,
-    val lastConnected: Long = System.currentTimeMillis()
+    val lastConnected: Long = System.currentTimeMillis(),
+    val lastAuthCheckAt: Long? = null,
+    val connectionHealth: String = "Unknown"
 )
 
 /**
@@ -67,7 +70,7 @@ data class PrintSettings(
     val copies: Int = 1,
     val pageSize: String = "A4",
     val orientation: String = "Portrait",
-    val colorMode: String = "Color",
+    val colorMode: String = "BlackAndWhite",
     val duplex: Boolean = false,
     val quality: String = "Normal",
     val pageRange: String? = null,  // e.g., "1-5", "1,3,5-8"
@@ -126,7 +129,11 @@ data class JobStatusUpdate(
     val jobId: String,
     val status: String,
     val progress: Int,
-    val message: String?
+    val message: String?,
+    val queueState: String = "Idle",
+    val failureCode: String? = null,
+    val failureMessage: String? = null,
+    val sourceDeviceId: String = ""
 )
 
 /**
@@ -146,6 +153,11 @@ data class ServerPrintJob(
     val deviceId: String = "",
     val deviceName: String = "",
     val priority: String = "Normal",
+    val updatedAt: String? = null,
+    val failureCode: String? = null,
+    val failureMessage: String? = null,
+    val queueState: String = "Idle",
+    val sourceDeviceId: String = "",
     val createdAt: String? = null,   // ISO DateTime string from server
     val completedAt: String? = null  // ISO DateTime string from server
 )
@@ -156,6 +168,17 @@ data class ServerPrintJob(
 data class PageCountResponse(
     val pageCount: Int,
     val fileType: String
+)
+
+data class ServerStatusResponse(
+    val status: String,
+    val serverName: String,
+    val version: String,
+    val timestamp: String,
+    val requiresPairing: Boolean,
+    val printerAvailable: Boolean,
+    val printerCount: Int,
+    val readiness: String
 )
 
 /**

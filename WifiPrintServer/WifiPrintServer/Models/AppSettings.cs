@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace WifiPrintServer.Models;
 
@@ -16,7 +17,8 @@ public class AppSettings
 
     public int ServerPort { get; set; } = 5000;
     public string ServerName { get; set; } = Environment.MachineName;
-    public string JwtSecret { get; set; } = Guid.NewGuid().ToString("N");
+    public string JwtSecret { get; set; } = GenerateSecureToken(48);
+    public string CertificatePassword { get; set; } = GenerateSecureToken(24);
     public int JwtExpirationDays { get; set; } = 365;
     public string? DefaultPrinter { get; set; }
     public bool AutoStart { get; set; } = false;
@@ -46,13 +48,17 @@ public class AppSettings
                 var settings = JsonSerializer.Deserialize<AppSettings>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (settings != null)
+                {
+                    settings.NormalizeSecrets();
                     return settings;
+                }
             }
             catch { /* fall through to create new */ }
         }
 
         // First launch — create settings with a stable JWT secret
         var newSettings = new AppSettings();
+        newSettings.NormalizeSecrets();
         newSettings.Save();
         return newSettings;
     }
@@ -63,10 +69,26 @@ public class AppSettings
     public void Save()
     {
         Directory.CreateDirectory(SettingsDir);
+        NormalizeSecrets();
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
         {
             WriteIndented = true
         });
         File.WriteAllText(SettingsFilePath, json);
+    }
+
+    private void NormalizeSecrets()
+    {
+        if (string.IsNullOrWhiteSpace(JwtSecret) || JwtSecret.Length < 32)
+            JwtSecret = GenerateSecureToken(48);
+
+        if (string.IsNullOrWhiteSpace(CertificatePassword) || CertificatePassword.Length < 16)
+            CertificatePassword = GenerateSecureToken(24);
+    }
+
+    private static string GenerateSecureToken(int numBytes)
+    {
+        var bytes = RandomNumberGenerator.GetBytes(numBytes);
+        return Convert.ToBase64String(bytes);
     }
 }

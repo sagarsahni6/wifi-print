@@ -97,27 +97,39 @@ public class PrinterService
     /// Prints a file natively — no external apps (Adobe) are launched.
     /// PDFs are rendered via PDFium, images/text are handled directly.
     /// </summary>
-    public async Task<bool> PrintFileAsync(string filePath, string printerName, PrintSettings settings,
+    public async Task<PrintExecutionResult> PrintFileAsync(string filePath, string printerName, PrintSettings settings,
         Action<int>? progressCallback = null, CancellationToken ct = default)
     {
+        var printer = GetAllPrinters().FirstOrDefault(item => item.Name == printerName);
+        if (printer == null)
+            return PrintExecutionResult.Fail("printer_not_found", $"Printer '{printerName}' is not installed");
+
+        if (!printer.IsOnline)
+            return PrintExecutionResult.Fail("printer_offline", $"Printer '{printerName}' is offline");
+
+        var settingsValidationError = ValidatePrinterSettings(printer, settings);
+        if (settingsValidationError != null)
+            return settingsValidationError;
+
         return await Task.Run(() =>
         {
             _logger.LogInformation("Printing {File} to {Printer}", filePath, printerName);
             progressCallback?.Invoke(10);
+            ct.ThrowIfCancellationRequested();
 
             var ext = Path.GetExtension(filePath).ToLowerInvariant();
-            bool result = ext switch
+            var result = ext switch
             {
                 ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif"
-                    => PrintImage(filePath, printerName, settings, progressCallback),
+                    => PrintImage(filePath, printerName, settings, progressCallback, ct),
                 ".pdf"
-                    => PrintPdf(filePath, printerName, settings, progressCallback),
+                    => PrintPdf(filePath, printerName, settings, progressCallback, ct),
                 ".txt" or ".text"
-                    => PrintTextFile(filePath, printerName, settings, progressCallback),
+                    => PrintTextFile(filePath, printerName, settings, progressCallback, ct),
                 _ => throw new NotSupportedException($"Unsupported file type: {ext}")
             };
 
-            if (result)
+            if (result.Success)
                 _logger.LogInformation("Print job sent successfully to {Printer}", printerName);
 
             return result;
@@ -128,9 +140,10 @@ public class PrinterService
     //  Image Printing
     // ═══════════════════════════════════════════════════════════════
 
-    private bool PrintImage(string filePath, string printerName, PrintSettings settings,
-        Action<int>? progressCallback)
+    private PrintExecutionResult PrintImage(string filePath, string printerName, PrintSettings settings,
+        Action<int>? progressCallback, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         progressCallback?.Invoke(20);
         using var image = Image.FromFile(filePath);
 
@@ -144,26 +157,28 @@ public class PrinterService
             e.HasMorePages = false;
         };
 
+        ct.ThrowIfCancellationRequested();
         printDoc.Print();
         progressCallback?.Invoke(100);
-        return true;
+        return PrintExecutionResult.Ok();
     }
 
     // ═══════════════════════════════════════════════════════════════
     //  PDF Printing — uses Docnet.Core (PDFium) for rendering
     // ═══════════════════════════════════════════════════════════════
 
-    private bool PrintPdf(string filePath, string printerName, PrintSettings settings,
-        Action<int>? progressCallback)
+    private PrintExecutionResult PrintPdf(string filePath, string printerName, PrintSettings settings,
+        Action<int>? progressCallback, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         progressCallback?.Invoke(20);
 
         // Render PDF pages to bitmaps using PDFium
-        var pageImages = RenderPdfPages(filePath, settings);
+        var pageImages = RenderPdfPages(filePath, settings, ct);
         if (pageImages.Count == 0)
         {
             _logger.LogWarning("No pages rendered from PDF");
-            return false;
+            return PrintExecutionResult.Fail("page_range_empty", "No pages were selected for printing");
         }
 
         _logger.LogInformation("Rendered {Count} PDF pages to images", pageImages.Count);
@@ -184,9 +199,10 @@ public class PrinterService
                 progressCallback?.Invoke(40 + (int)(55.0 * currentPage / totalPages));
             };
 
+            ct.ThrowIfCancellationRequested();
             printDoc.Print();
             progressCallback?.Invoke(100);
-            return true;
+            return PrintExecutionResult.Ok();
         }
         finally
         {
@@ -217,7 +233,7 @@ public class PrinterService
     /// Parses a complex page range string like "1,3,5-8,12" into a sorted list of 0-indexed page numbers.
     /// Supports: single pages ("3"), ranges ("1-5"), comma-separated ("1,3,5"), and mixed ("1,3-5,8").
     /// </summary>
-    private static List<int> ParsePageRange(string pageRange, int totalPages)
+    public static List<int> ParsePageRange(string pageRange, int totalPages)
     {
         var pages = new HashSet<int>();
         var segments = pageRange.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -250,7 +266,7 @@ public class PrinterService
     /// <summary>
     /// Renders each PDF page to a high-resolution Bitmap using PDFium via Docnet.Core.
     /// </summary>
-    private List<Bitmap> RenderPdfPages(string filePath, PrintSettings settings)
+    private List<Bitmap> RenderPdfPages(string filePath, PrintSettings settings, CancellationToken ct)
     {
         var bitmaps = new List<Bitmap>();
 
@@ -283,6 +299,7 @@ public class PrinterService
         {
             try
             {
+                ct.ThrowIfCancellationRequested();
                 using var pageReader = docReader.GetPageReader(i);
                 var rawBytes = pageReader.GetImage();
                 int w = pageReader.GetPageWidth();
@@ -323,9 +340,10 @@ public class PrinterService
     //  Text File Printing
     // ═══════════════════════════════════════════════════════════════
 
-    private bool PrintTextFile(string filePath, string printerName, PrintSettings settings,
-        Action<int>? progressCallback)
+    private PrintExecutionResult PrintTextFile(string filePath, string printerName, PrintSettings settings,
+        Action<int>? progressCallback, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         progressCallback?.Invoke(20);
         var lines = File.ReadAllLines(filePath);
 
@@ -342,6 +360,7 @@ public class PrinterService
 
             while (lineIndex < lines.Length && y + lineHeight < e.MarginBounds.Bottom)
             {
+                ct.ThrowIfCancellationRequested();
                 e.Graphics.DrawString(lines[lineIndex], font, Brushes.Black, e.MarginBounds.Left, y);
                 y += lineHeight;
                 lineIndex++;
@@ -349,9 +368,10 @@ public class PrinterService
             e.HasMorePages = lineIndex < lines.Length;
         };
 
+        ct.ThrowIfCancellationRequested();
         printDoc.Print();
         progressCallback?.Invoke(100);
-        return true;
+        return PrintExecutionResult.Ok();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -468,4 +488,52 @@ public class PrinterService
             sizes.AddRange(new[] { "A4", "Letter", "Legal", "A3" });
         return sizes;
     }
+
+    /// <summary>
+    /// Validates and auto-corrects print settings. Returns a failure only for truly fatal mismatches.
+    /// Auto-downgrades color→B&W and duplex→simplex when the printer doesn't support them.
+    /// </summary>
+    private PrintExecutionResult? ValidatePrinterSettings(PrinterInfo printer, PrintSettings settings)
+    {
+        // Auto-fallback: if printer is mono-only but client requested color, silently downgrade
+        if (settings.ColorMode == "Color" && !printer.SupportsColor)
+        {
+            _logger.LogInformation("Printer '{Printer}' is mono-only — auto-downgrading to BlackAndWhite", printer.Name);
+            settings.ColorMode = "BlackAndWhite";
+        }
+
+        // Auto-fallback: if printer doesn't support duplex, silently disable
+        if (settings.Duplex && !printer.SupportsDuplex)
+        {
+            _logger.LogInformation("Printer '{Printer}' doesn't support duplex — disabling", printer.Name);
+            settings.Duplex = false;
+        }
+
+        // Paper size: try to use the requested one, fall back to first supported
+        if (!printer.SupportedPaperSizes.Contains(settings.PageSize, StringComparer.OrdinalIgnoreCase))
+        {
+            var fallback = printer.SupportedPaperSizes.FirstOrDefault() ?? "A4";
+            _logger.LogInformation("Printer '{Printer}' doesn't support '{Size}' — using '{Fallback}'",
+                printer.Name, settings.PageSize, fallback);
+            settings.PageSize = fallback;
+        }
+
+        return null;
+    }
+}
+
+public sealed class PrintExecutionResult
+{
+    public bool Success { get; init; }
+    public string? FailureCode { get; init; }
+    public string? ErrorMessage { get; init; }
+
+    public static PrintExecutionResult Ok() => new() { Success = true };
+
+    public static PrintExecutionResult Fail(string code, string message) => new()
+    {
+        Success = false,
+        FailureCode = code,
+        ErrorMessage = message
+    };
 }

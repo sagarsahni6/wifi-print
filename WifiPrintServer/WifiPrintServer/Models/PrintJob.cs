@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace WifiPrintServer.Models;
 
@@ -44,10 +45,19 @@ public class PrintJob : INotifyPropertyChanged
     }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public int RetryCount { get; set; }
     public string Priority { get; set; } = "Normal"; // High, Normal, Low
+    public string QueueState { get; set; } = "Idle";
+    public string? FailureCode { get; set; }
+
+    [JsonPropertyName("sourceDeviceId")]
+    public string SourceDeviceId => DeviceId;
+
+    [JsonPropertyName("failureMessage")]
+    public string? FailureMessage => ErrorMessage;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

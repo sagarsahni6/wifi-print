@@ -23,11 +23,14 @@ import kotlin.math.*
 
 data class ScannedPageData(
     val index: Int,
-    val originalBitmap: Bitmap,  // Keep original for re-filtering
+    val originalBitmap: Bitmap,
     val bitmap: Bitmap,
     val uri: Uri? = null,
     val filter: String = "Auto Enhance"
 )
+
+enum class ScanMode { Document, IDCard }
+enum class IdCardStep { Front, Back, Preview }
 
 data class ScannerUiState(
     val isCapturing: Boolean = false,
@@ -39,7 +42,13 @@ data class ScannerUiState(
     val savedPdfUri: Uri? = null,
     val error: String? = null,
     val showCamera: Boolean = true,
-    val autoEdgeDetection: Boolean = true  // Enable auto edge detection
+    val autoEdgeDetection: Boolean = true,
+    // Scan mode
+    val scanMode: ScanMode = ScanMode.Document,
+    // ID Card state
+    val idCardStep: IdCardStep = IdCardStep.Front,
+    val idCardFrontBitmap: Bitmap? = null,
+    val idCardBackBitmap: Bitmap? = null
 )
 
 @HiltViewModel
@@ -49,7 +58,6 @@ class ScannerViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "ScannerViewModel"
-        // Standard A4 at 300 DPI
         private const val A4_WIDTH = 2480
         private const val A4_HEIGHT = 3508
     }
@@ -57,24 +65,225 @@ class ScannerViewModel @Inject constructor(
     private val _state = MutableStateFlow(ScannerUiState())
     val state: StateFlow<ScannerUiState> = _state
 
+    // ═══════════════════════════════════════════════════════════════
+    //  Scan Mode
+    // ═══════════════════════════════════════════════════════════════
+
+    fun setScanMode(mode: ScanMode) {
+        _state.update {
+            it.copy(
+                scanMode = mode,
+                idCardStep = IdCardStep.Front,
+                idCardFrontBitmap = null,
+                idCardBackBitmap = null
+            )
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  ML Kit Document Scanner result handling
+    // ═══════════════════════════════════════════════════════════════
+
+    /** Called when ML Kit Document Scanner returns scanned page URIs. */
+    fun onMlKitScanResult(pageUris: List<Uri>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+
+            val newPages = withContext(Dispatchers.Default) {
+                pageUris.mapIndexed { idx, uri ->
+                    val bitmap = loadBitmapFromUri(uri) ?: return@mapIndexed null
+                    val scaled = scaleToA4(bitmap)
+                    val filtered = applyFilter(scaled, _state.value.currentFilter)
+                    ScannedPageData(
+                        index = _state.value.scannedPages.size + idx,
+                        originalBitmap = scaled,
+                        bitmap = filtered,
+                        uri = uri,
+                        filter = _state.value.currentFilter
+                    )
+                }.filterNotNull()
+            }
+
+            _state.update {
+                it.copy(
+                    scannedPages = it.scannedPages + newPages,
+                    isProcessing = false,
+                    selectedPageIndex = it.scannedPages.size,
+                    showCamera = false
+                )
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  ID Card Scanning (Front + Back → Single Page)
+    // ═══════════════════════════════════════════════════════════════
+
+    fun onIdCardFrontCaptured(bitmap: Bitmap) {
+        _state.update {
+            it.copy(idCardFrontBitmap = bitmap, idCardStep = IdCardStep.Back)
+        }
+    }
+
+    fun onIdCardBackCaptured(bitmap: Bitmap) {
+        _state.update {
+            it.copy(idCardBackBitmap = bitmap, idCardStep = IdCardStep.Preview)
+        }
+    }
+
+    /** Called when ML Kit returns the scanned front side URI (with edge detection). */
+    fun onIdCardFrontScanned(uri: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+            val bitmap = withContext(Dispatchers.IO) { loadBitmapFromUri(uri) }
+            if (bitmap != null) {
+                _state.update {
+                    it.copy(idCardFrontBitmap = bitmap, idCardStep = IdCardStep.Back, isProcessing = false)
+                }
+            } else {
+                _state.update { it.copy(isProcessing = false, error = "Failed to load front side image") }
+            }
+        }
+    }
+
+    /** Called when ML Kit returns the scanned back side URI (with edge detection). */
+    fun onIdCardBackScanned(uri: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+            val bitmap = withContext(Dispatchers.IO) { loadBitmapFromUri(uri) }
+            if (bitmap != null) {
+                _state.update {
+                    it.copy(idCardBackBitmap = bitmap, idCardStep = IdCardStep.Preview, isProcessing = false)
+                }
+            } else {
+                _state.update { it.copy(isProcessing = false, error = "Failed to load back side image") }
+            }
+        }
+    }
+
+    /** Combine front+back into a single composite bitmap and add as a page. */
+    fun combineIdCardSides() {
+        val front = _state.value.idCardFrontBitmap ?: return
+        val back = _state.value.idCardBackBitmap ?: return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+
+            val composite = withContext(Dispatchers.Default) {
+                combineIdCardBitmaps(front, back)
+            }
+
+            val filtered = withContext(Dispatchers.Default) {
+                applyFilter(composite, _state.value.currentFilter)
+            }
+
+            val page = ScannedPageData(
+                index = _state.value.scannedPages.size,
+                originalBitmap = composite,
+                bitmap = filtered,
+                filter = _state.value.currentFilter
+            )
+
+            _state.update {
+                it.copy(
+                    scannedPages = it.scannedPages + page,
+                    isProcessing = false,
+                    showCamera = false,
+                    idCardStep = IdCardStep.Front,
+                    idCardFrontBitmap = null,
+                    idCardBackBitmap = null,
+                    selectedPageIndex = it.scannedPages.size
+                )
+            }
+        }
+    }
+
+    fun resetIdCard() {
+        _state.update {
+            it.copy(
+                idCardStep = IdCardStep.Front,
+                idCardFrontBitmap = null,
+                idCardBackBitmap = null
+            )
+        }
+    }
+
+    /**
+     * Combines front and back ID card bitmaps into a single landscape A4 page
+     * with both sides placed SIDE BY SIDE (front left, back right).
+     */
+    private fun combineIdCardBitmaps(front: Bitmap, back: Bitmap): Bitmap {
+        // Landscape A4: width > height
+        val targetW = A4_HEIGHT  // 3508 (landscape width)
+        val targetH = A4_WIDTH   // 2480 (landscape height)
+        val composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(composite)
+        canvas.drawColor(Color.WHITE)
+
+        val padding = 80
+        val labelHeight = 60
+        val cardAreaW = (targetW - padding * 3) / 2
+        val cardAreaH = targetH - padding * 2 - labelHeight
+
+        // Scale front to fit left half
+        val frontScale = min(
+            cardAreaW.toFloat() / front.width,
+            cardAreaH.toFloat() / front.height
+        )
+        val frontW = (front.width * frontScale).toInt()
+        val frontH = (front.height * frontScale).toInt()
+        val frontLeft = padding + (cardAreaW - frontW) / 2f
+        val frontTop = padding + labelHeight + (cardAreaH - frontH) / 2f
+
+        // Label
+        val labelPaint = Paint().apply {
+            color = Color.DKGRAY; textSize = 44f; isAntiAlias = true
+            typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("FRONT", (padding + cardAreaW / 2f), (padding + 44f), labelPaint)
+
+        canvas.drawBitmap(front, null,
+            RectF(frontLeft, frontTop, frontLeft + frontW, frontTop + frontH),
+            Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+
+        // Scale back to fit right half
+        val backScale = min(
+            cardAreaW.toFloat() / back.width,
+            cardAreaH.toFloat() / back.height
+        )
+        val backW = (back.width * backScale).toInt()
+        val backH = (back.height * backScale).toInt()
+        val rightAreaLeft = padding * 2 + cardAreaW
+        val backLeft = rightAreaLeft + (cardAreaW - backW) / 2f
+        val backTop = padding + labelHeight + (cardAreaH - backH) / 2f
+
+        canvas.drawText("BACK", (rightAreaLeft + cardAreaW / 2f), (padding + 44f), labelPaint)
+
+        canvas.drawBitmap(back, null,
+            RectF(backLeft, backTop, backLeft + backW, backTop + backH),
+            Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+
+        // Separator line between front and back
+        val separatorPaint = Paint().apply {
+            color = Color.LTGRAY; strokeWidth = 2f; isAntiAlias = true
+        }
+        val separatorX = (padding * 1.5f + cardAreaW)
+        canvas.drawLine(separatorX, padding.toFloat(), separatorX, (targetH - padding).toFloat(), separatorPaint)
+
+        return composite
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Legacy capture (fallback for CameraX if ML Kit unavailable)
+    // ═══════════════════════════════════════════════════════════════
+
     fun onPhotoCaptured(bitmap: Bitmap) {
         viewModelScope.launch {
             _state.update { it.copy(isProcessing = true) }
 
             val processed = withContext(Dispatchers.Default) {
-                var img = bitmap
-
-                // Step 1: Auto edge detection & crop
-                if (_state.value.autoEdgeDetection) {
-                    img = autoDetectAndCrop(img)
-                }
-
-                // Step 2: Scale to A4 proportions for consistent output
-                img = scaleToA4(img)
-
-                // Step 3: Apply selected image filter
+                val img = scaleToA4(bitmap)
                 val filtered = applyFilter(img, _state.value.currentFilter)
-
                 Pair(img, filtered)
             }
 
@@ -95,6 +304,10 @@ class ScannerViewModel @Inject constructor(
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    //  Page Management
+    // ═══════════════════════════════════════════════════════════════
+
     fun removePage(index: Int) {
         _state.update {
             val updated = it.scannedPages.toMutableList()
@@ -107,18 +320,6 @@ class ScannerViewModel @Inject constructor(
                     scannedPages = reindexed,
                     selectedPageIndex = (it.selectedPageIndex).coerceAtMost(reindexed.size - 1)
                 )
-            } else it
-        }
-    }
-
-    fun reorderPage(from: Int, to: Int) {
-        _state.update {
-            val updated = it.scannedPages.toMutableList()
-            if (from in updated.indices && to in updated.indices) {
-                val page = updated.removeAt(from)
-                updated.add(to, page)
-                val reindexed = updated.mapIndexed { i, p -> p.copy(index = i) }
-                it.copy(scannedPages = reindexed)
             } else it
         }
     }
@@ -140,7 +341,6 @@ class ScannerViewModel @Inject constructor(
                 val processed = withContext(Dispatchers.Default) {
                     applyFilter(original, filter)
                 }
-                // Don't recycle old filtered — original stays intact
                 pages[pageIndex] = pages[pageIndex].copy(bitmap = processed, filter = filter)
                 _state.update { it.copy(scannedPages = pages, isProcessing = false) }
             }
@@ -158,7 +358,6 @@ class ScannerViewModel @Inject constructor(
     fun exportAsPdf() {
         viewModelScope.launch {
             _state.update { it.copy(isSavingPdf = true, error = null) }
-
             try {
                 val uri = withContext(Dispatchers.IO) {
                     createPdfFromBitmaps(context, _state.value.scannedPages.map { it.bitmap })
@@ -170,215 +369,53 @@ class ScannerViewModel @Inject constructor(
         }
     }
 
-    fun clearError() {
-        _state.update { it.copy(error = null) }
-    }
-
-    fun clearSavedPdf() {
-        _state.update { it.copy(savedPdfUri = null) }
-    }
+    fun clearError() { _state.update { it.copy(error = null) } }
+    fun clearSavedPdf() { _state.update { it.copy(savedPdfUri = null) } }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Auto Edge Detection & Document Cropping
+    //  Image Processing & Filters
     // ═══════════════════════════════════════════════════════════════
 
-    /**
-     * Detect document edges using luminance analysis and crop to the document boundary.
-     * Uses a multi-pass approach:
-     * 1. Downscale for fast edge analysis
-     * 2. Find dominant edges using Sobel-like gradient detection
-     * 3. Find the largest rectangular region
-     * 4. Crop and apply perspective correction
-     */
-    private fun autoDetectAndCrop(bitmap: Bitmap): Bitmap {
-        try {
-            val w = bitmap.width
-            val h = bitmap.height
-
-            // Downscale for fast processing
-            val scale = 0.25f
-            val sw = (w * scale).toInt()
-            val sh = (h * scale).toInt()
-            val small = Bitmap.createScaledBitmap(bitmap, sw, sh, true)
-
-            // Convert to grayscale luminance array
-            val pixels = IntArray(sw * sh)
-            small.getPixels(pixels, 0, sw, 0, 0, sw, sh)
-            val luminance = IntArray(sw * sh)
-            for (i in pixels.indices) {
-                val r = (pixels[i] shr 16) and 0xFF
-                val g = (pixels[i] shr 8) and 0xFF
-                val b = pixels[i] and 0xFF
-                luminance[i] = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
+    private fun loadBitmapFromUri(uri: Uri): Bitmap? {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
             }
-
-            // Apply Sobel edge detection
-            val edges = sobelEdgeDetect(luminance, sw, sh)
-
-            // Find document boundary using edge projection
-            val bounds = findDocumentBounds(edges, sw, sh)
-            small.recycle()
-
-            if (bounds != null) {
-                // Scale bounds back to original size
-                val left = (bounds[0] / scale).toInt().coerceIn(0, w - 1)
-                val top = (bounds[1] / scale).toInt().coerceIn(0, h - 1)
-                val right = (bounds[2] / scale).toInt().coerceIn(left + 1, w)
-                val bottom = (bounds[3] / scale).toInt().coerceIn(top + 1, h)
-
-                val cropW = right - left
-                val cropH = bottom - top
-
-                // Only crop if the detected area is significant (>30% of image)
-                if (cropW > w * 0.3 && cropH > h * 0.3) {
-                    Log.d(TAG, "Edge detection: cropping to ($left, $top, $right, $bottom)")
-                    return Bitmap.createBitmap(bitmap, left, top, cropW, cropH)
-                }
-            }
-
-            Log.d(TAG, "Edge detection: no significant document boundary found, using full image")
-            return bitmap
         } catch (e: Exception) {
-            Log.e(TAG, "Edge detection failed, using original", e)
-            return bitmap
+            Log.e(TAG, "Failed to load bitmap from URI", e)
+            null
         }
     }
 
-    /**
-     * Sobel edge detection on grayscale luminance array.
-     */
-    private fun sobelEdgeDetect(lum: IntArray, w: Int, h: Int): IntArray {
-        val edges = IntArray(w * h)
-        for (y in 1 until h - 1) {
-            for (x in 1 until w - 1) {
-                // Sobel X kernel
-                val gx = -lum[(y - 1) * w + (x - 1)] - 2 * lum[y * w + (x - 1)] - lum[(y + 1) * w + (x - 1)] +
-                          lum[(y - 1) * w + (x + 1)] + 2 * lum[y * w + (x + 1)] + lum[(y + 1) * w + (x + 1)]
-                // Sobel Y kernel
-                val gy = -lum[(y - 1) * w + (x - 1)] - 2 * lum[(y - 1) * w + x] - lum[(y - 1) * w + (x + 1)] +
-                          lum[(y + 1) * w + (x - 1)] + 2 * lum[(y + 1) * w + x] + lum[(y + 1) * w + (x + 1)]
-
-                edges[y * w + x] = min(255, sqrt((gx * gx + gy * gy).toDouble()).toInt())
-            }
-        }
-        return edges
-    }
-
-    /**
-     * Find document bounds by analyzing edge projections.
-     * Uses horizontal and vertical edge histograms to find the document rectangle.
-     */
-    private fun findDocumentBounds(edges: IntArray, w: Int, h: Int): IntArray? {
-        val threshold = 40  // Edge strength threshold
-
-        // Horizontal projection (sum edges per row)
-        val hProj = IntArray(h)
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                if (edges[y * w + x] > threshold) hProj[y]++
-            }
-        }
-
-        // Vertical projection (sum edges per column)
-        val vProj = IntArray(w)
-        for (x in 0 until w) {
-            for (y in 0 until h) {
-                if (edges[y * w + x] > threshold) vProj[x]++
-            }
-        }
-
-        // Find strong edge lines
-        val hThreshold = w * 0.1  // At least 10% of width should have edges
-        val vThreshold = h * 0.1
-
-        var top = 0
-        var bottom = h - 1
-        var left = 0
-        var right = w - 1
-
-        // Find top edge
-        for (y in 0 until h / 3) {
-            if (hProj[y] > hThreshold) { top = y; break }
-        }
-        // Find bottom edge
-        for (y in h - 1 downTo h * 2 / 3) {
-            if (hProj[y] > hThreshold) { bottom = y; break }
-        }
-        // Find left edge
-        for (x in 0 until w / 3) {
-            if (vProj[x] > vThreshold) { left = x; break }
-        }
-        // Find right edge
-        for (x in w - 1 downTo w * 2 / 3) {
-            if (vProj[x] > vThreshold) { right = x; break }
-        }
-
-        // Add small padding
-        val pad = 3
-        left = (left - pad).coerceAtLeast(0)
-        top = (top - pad).coerceAtLeast(0)
-        right = (right + pad).coerceAtMost(w - 1)
-        bottom = (bottom + pad).coerceAtMost(h - 1)
-
-        return if (right > left && bottom > top) {
-            intArrayOf(left, top, right, bottom)
-        } else null
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Image Enhancement & Filters
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * Scale image to A4 proportions while maintaining aspect ratio.
-     */
     private fun scaleToA4(bitmap: Bitmap): Bitmap {
         val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
         val a4Ratio = A4_WIDTH.toFloat() / A4_HEIGHT.toFloat()
-
         val targetW: Int
         val targetH: Int
-
         if (ratio > a4Ratio) {
-            // Wider than A4 — fit to width
-            targetW = A4_WIDTH
-            targetH = (A4_WIDTH / ratio).toInt()
+            targetW = A4_WIDTH; targetH = (A4_WIDTH / ratio).toInt()
         } else {
-            // Taller than A4 — fit to height
-            targetH = A4_HEIGHT
-            targetW = (A4_HEIGHT * ratio).toInt()
+            targetH = A4_HEIGHT; targetW = (A4_HEIGHT * ratio).toInt()
         }
-
         return Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
     }
 
-    /**
-     * Apply the selected filter with professional-grade image processing.
-     */
     private fun applyFilter(bitmap: Bitmap, filter: String): Bitmap {
         return when (filter) {
             "B&W" -> adaptiveBlackAndWhite(bitmap)
             "Grayscale" -> toGrayscale(bitmap)
             "Auto Enhance" -> autoEnhanceDocument(bitmap)
-            "Sharp" -> sharpenImage(bitmap)
+            "Sharp" -> applySharpenKernel(bitmap)
             "High Contrast" -> highContrast(bitmap)
             else -> bitmap.copy(Bitmap.Config.ARGB_8888, false)
         }
     }
 
-    /**
-     * Adaptive black & white using local threshold.
-     * Much better than global threshold for documents with uneven lighting.
-     */
     private fun adaptiveBlackAndWhite(bitmap: Bitmap): Bitmap {
-        val w = bitmap.width
-        val h = bitmap.height
+        val w = bitmap.width; val h = bitmap.height
         val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-
         val srcPixels = IntArray(w * h)
         bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
-
-        // Convert to grayscale
         val gray = IntArray(w * h)
         for (i in srcPixels.indices) {
             val r = (srcPixels[i] shr 16) and 0xFF
@@ -386,62 +423,31 @@ class ScannerViewModel @Inject constructor(
             val b = srcPixels[i] and 0xFF
             gray[i] = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
         }
-
-        // Adaptive threshold using block mean
-        val blockSize = max(15, min(w, h) / 40)  // Adaptive block size
-        val c = 10  // Constant subtracted from mean
-
+        val blockSize = max(15, min(w, h) / 40)
+        val c = 10
         val outPixels = IntArray(w * h)
         for (y in 0 until h) {
             for (x in 0 until w) {
-                // Calculate local mean in block
-                var sum = 0
-                var count = 0
-                val y1 = max(0, y - blockSize / 2)
-                val y2 = min(h - 1, y + blockSize / 2)
-                val x1 = max(0, x - blockSize / 2)
-                val x2 = min(w - 1, x + blockSize / 2)
-
-                // Sample every 2nd pixel for speed
-                var sy = y1
-                while (sy <= y2) {
-                    var sx = x1
-                    while (sx <= x2) {
-                        sum += gray[sy * w + sx]
-                        count++
-                        sx += 2
-                    }
-                    sy += 2
-                }
-
+                var sum = 0; var count = 0
+                val y1 = max(0, y - blockSize / 2); val y2 = min(h - 1, y + blockSize / 2)
+                val x1 = max(0, x - blockSize / 2); val x2 = min(w - 1, x + blockSize / 2)
+                var sy = y1; while (sy <= y2) { var sx = x1; while (sx <= x2) { sum += gray[sy * w + sx]; count++; sx += 2 }; sy += 2 }
                 val threshold = if (count > 0) sum / count - c else 128
-                val pixel = gray[y * w + x]
-                outPixels[y * w + x] = if (pixel > threshold) {
-                    0xFFFFFFFF.toInt()  // White
-                } else {
-                    0xFF000000.toInt()  // Black
-                }
+                outPixels[y * w + x] = if (gray[y * w + x] > threshold) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
             }
         }
-
         result.setPixels(outPixels, 0, w, 0, 0, w, h)
         return result
     }
 
-    /**
-     * Professional grayscale conversion with slight contrast boost.
-     */
     private fun toGrayscale(bitmap: Bitmap): Bitmap {
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val paint = Paint()
         val cm = ColorMatrix().apply { setSaturation(0f) }
-        // Slight contrast boost for documents
         val contrastMatrix = ColorMatrix(floatArrayOf(
-            1.1f, 0f, 0f, 0f, -12f,
-            0f, 1.1f, 0f, 0f, -12f,
-            0f, 0f, 1.1f, 0f, -12f,
-            0f, 0f, 0f, 1f, 0f
+            1.1f, 0f, 0f, 0f, -12f, 0f, 1.1f, 0f, 0f, -12f,
+            0f, 0f, 1.1f, 0f, -12f, 0f, 0f, 0f, 1f, 0f
         ))
         cm.postConcat(contrastMatrix)
         paint.colorFilter = ColorMatrixColorFilter(cm)
@@ -449,224 +455,109 @@ class ScannerViewModel @Inject constructor(
         return result
     }
 
-    /**
-     * Auto-enhance for documents: removes shadows, boosts text contrast,
-     * whitens background while preserving text sharpness.
-     */
     private fun autoEnhanceDocument(bitmap: Bitmap): Bitmap {
-        val w = bitmap.width
-        val h = bitmap.height
+        val w = bitmap.width; val h = bitmap.height
         val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-
         val srcPixels = IntArray(w * h)
         bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
-
-        // Step 1: Analyze histogram to find brightness range
         val histogram = IntArray(256)
         for (pixel in srcPixels) {
-            val r = (pixel shr 16) and 0xFF
-            val g = (pixel shr 8) and 0xFF
-            val b = pixel and 0xFF
-            val lum = (0.299 * r + 0.587 * g + 0.114 * b).toInt().coerceIn(0, 255)
-            histogram[lum]++
+            val r = (pixel shr 16) and 0xFF; val g = (pixel shr 8) and 0xFF; val b = pixel and 0xFF
+            histogram[(0.299 * r + 0.587 * g + 0.114 * b).toInt().coerceIn(0, 255)]++
         }
-
-        // Find 2nd and 98th percentile for auto-levels
         val totalPixels = w * h
-        var low = 0
-        var high = 255
-        var cumSum = 0
-        for (i in 0..255) {
-            cumSum += histogram[i]
-            if (cumSum >= totalPixels * 0.02) { low = i; break }
-        }
+        var low = 0; var high = 255; var cumSum = 0
+        for (i in 0..255) { cumSum += histogram[i]; if (cumSum >= totalPixels * 0.02) { low = i; break } }
         cumSum = 0
-        for (i in 255 downTo 0) {
-            cumSum += histogram[i]
-            if (cumSum >= totalPixels * 0.02) { high = i; break }
-        }
-
+        for (i in 255 downTo 0) { cumSum += histogram[i]; if (cumSum >= totalPixels * 0.02) { high = i; break } }
         val range = (high - low).coerceAtLeast(1).toFloat()
-
-        // Step 2: Apply auto-levels with slight white boost for document background
         val outPixels = IntArray(w * h)
         for (i in srcPixels.indices) {
-            val r = (srcPixels[i] shr 16) and 0xFF
-            val g = (srcPixels[i] shr 8) and 0xFF
-            val b = srcPixels[i] and 0xFF
-            val a = (srcPixels[i] shr 24) and 0xFF
-
-            // Auto-level each channel
+            val r = (srcPixels[i] shr 16) and 0xFF; val g = (srcPixels[i] shr 8) and 0xFF
+            val b = srcPixels[i] and 0xFF; val a = (srcPixels[i] shr 24) and 0xFF
             val nr = (((r - low) / range) * 255).toInt().coerceIn(0, 255)
             val ng = (((g - low) / range) * 255).toInt().coerceIn(0, 255)
             val nb = (((b - low) / range) * 255).toInt().coerceIn(0, 255)
-
-            // Slight gamma correction to brighten shadows (gamma = 0.85)
             val fr = (255 * (nr / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
             val fg = (255 * (ng / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
             val fb = (255 * (nb / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
-
             outPixels[i] = (a shl 24) or (fr shl 16) or (fg shl 8) or fb
         }
-
         result.setPixels(outPixels, 0, w, 0, 0, w, h)
-
-        // Step 3: Apply sharpening for text clarity
         return applySharpenKernel(result)
     }
 
-    /**
-     * Sharpen image using unsharp mask technique.
-     */
-    private fun sharpenImage(bitmap: Bitmap): Bitmap {
-        return applySharpenKernel(bitmap)
-    }
-
-    /**
-     * High contrast mode for faded/low contrast documents.
-     */
     private fun highContrast(bitmap: Bitmap): Bitmap {
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val paint = Paint()
         val cm = ColorMatrix(floatArrayOf(
-            1.6f, 0f, 0f, 0f, -80f,
-            0f, 1.6f, 0f, 0f, -80f,
-            0f, 0f, 1.6f, 0f, -80f,
-            0f, 0f, 0f, 1f, 0f
+            1.6f, 0f, 0f, 0f, -80f, 0f, 1.6f, 0f, 0f, -80f,
+            0f, 0f, 1.6f, 0f, -80f, 0f, 0f, 0f, 1f, 0f
         ))
         paint.colorFilter = ColorMatrixColorFilter(cm)
         canvas.drawBitmap(bitmap, 0f, 0f, paint)
         return result
     }
 
-    /**
-     * Apply 3x3 sharpening convolution kernel.
-     */
     private fun applySharpenKernel(bitmap: Bitmap): Bitmap {
-        val w = bitmap.width
-        val h = bitmap.height
+        val w = bitmap.width; val h = bitmap.height
         val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-
         val srcPixels = IntArray(w * h)
         bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
-
-        // Sharpening kernel: center = 5, edges = -1
         val outPixels = IntArray(w * h)
         for (y in 1 until h - 1) {
             for (x in 1 until w - 1) {
-                var rSum = 0; var gSum = 0; var bSum = 0
-
-                // Center pixel × 5
                 val cp = srcPixels[y * w + x]
-                rSum += ((cp shr 16) and 0xFF) * 5
-                gSum += ((cp shr 8) and 0xFF) * 5
-                bSum += (cp and 0xFF) * 5
-
-                // Subtract neighbors
-                for (dy in intArrayOf(-1, 0, 0, 1)) {
-                    val dx = if (dy == 0) { if (rSum == ((cp shr 16) and 0xFF) * 5) -1 else 1 } else 0
-                    // Use cardinal directions
-                }
-
-                // Simplified: use the 4-neighbor sharpening
-                val top = srcPixels[(y - 1) * w + x]
-                val bot = srcPixels[(y + 1) * w + x]
-                val lft = srcPixels[y * w + (x - 1)]
-                val rgt = srcPixels[y * w + (x + 1)]
-
-                rSum = ((cp shr 16) and 0xFF) * 5 -
-                       ((top shr 16) and 0xFF) -
-                       ((bot shr 16) and 0xFF) -
-                       ((lft shr 16) and 0xFF) -
-                       ((rgt shr 16) and 0xFF)
-
-                gSum = ((cp shr 8) and 0xFF) * 5 -
-                       ((top shr 8) and 0xFF) -
-                       ((bot shr 8) and 0xFF) -
-                       ((lft shr 8) and 0xFF) -
-                       ((rgt shr 8) and 0xFF)
-
-                bSum = (cp and 0xFF) * 5 -
-                       (top and 0xFF) -
-                       (bot and 0xFF) -
-                       (lft and 0xFF) -
-                       (rgt and 0xFF)
-
-                outPixels[y * w + x] = (0xFF shl 24) or
-                    (rSum.coerceIn(0, 255) shl 16) or
-                    (gSum.coerceIn(0, 255) shl 8) or
-                    bSum.coerceIn(0, 255)
+                val top = srcPixels[(y - 1) * w + x]; val bot = srcPixels[(y + 1) * w + x]
+                val lft = srcPixels[y * w + (x - 1)]; val rgt = srcPixels[y * w + (x + 1)]
+                val rSum = ((cp shr 16) and 0xFF) * 5 - ((top shr 16) and 0xFF) - ((bot shr 16) and 0xFF) - ((lft shr 16) and 0xFF) - ((rgt shr 16) and 0xFF)
+                val gSum = ((cp shr 8) and 0xFF) * 5 - ((top shr 8) and 0xFF) - ((bot shr 8) and 0xFF) - ((lft shr 8) and 0xFF) - ((rgt shr 8) and 0xFF)
+                val bSum = (cp and 0xFF) * 5 - (top and 0xFF) - (bot and 0xFF) - (lft and 0xFF) - (rgt and 0xFF)
+                outPixels[y * w + x] = (0xFF shl 24) or (rSum.coerceIn(0, 255) shl 16) or (gSum.coerceIn(0, 255) shl 8) or bSum.coerceIn(0, 255)
             }
         }
-
-        // Copy border pixels unchanged
-        for (x in 0 until w) {
-            outPixels[x] = srcPixels[x]
-            outPixels[(h - 1) * w + x] = srcPixels[(h - 1) * w + x]
-        }
-        for (y in 0 until h) {
-            outPixels[y * w] = srcPixels[y * w]
-            outPixels[y * w + w - 1] = srcPixels[y * w + w - 1]
-        }
-
+        for (x in 0 until w) { outPixels[x] = srcPixels[x]; outPixels[(h - 1) * w + x] = srcPixels[(h - 1) * w + x] }
+        for (y in 0 until h) { outPixels[y * w] = srcPixels[y * w]; outPixels[y * w + w - 1] = srcPixels[y * w + w - 1] }
         result.setPixels(outPixels, 0, w, 0, 0, w, h)
         return result
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  PDF Export with high quality
+    //  PDF Export
     // ═══════════════════════════════════════════════════════════════
 
     private fun createPdfFromBitmaps(context: Context, bitmaps: List<Bitmap>): Uri {
         val pdf = PdfDocument()
         for ((index, bitmap) in bitmaps.withIndex()) {
-            // Use A4 page size (in 72 DPI points: 595 x 842)
-            val pageW = 595
-            val pageH = 842
+            val pageW = 595; val pageH = 842
             val pageInfo = PdfDocument.PageInfo.Builder(pageW, pageH, index + 1).create()
             val page = pdf.startPage(pageInfo)
-
             val canvas = page.canvas
-            // Scale bitmap to fill page while maintaining aspect ratio
-            val scaleX = pageW.toFloat() / bitmap.width
-            val scaleY = pageH.toFloat() / bitmap.height
+            val scaleX = pageW.toFloat() / bitmap.width; val scaleY = pageH.toFloat() / bitmap.height
             val scale = min(scaleX, scaleY)
-
-            val scaledW = bitmap.width * scale
-            val scaledH = bitmap.height * scale
-            val offsetX = (pageW - scaledW) / 2
-            val offsetY = (pageH - scaledH) / 2
-
+            val scaledW = bitmap.width * scale; val scaledH = bitmap.height * scale
+            val offsetX = (pageW - scaledW) / 2; val offsetY = (pageH - scaledH) / 2
             val destRect = RectF(offsetX, offsetY, offsetX + scaledW, offsetY + scaledH)
-            val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-            canvas.drawBitmap(bitmap, null, destRect, paint)
-
+            canvas.drawBitmap(bitmap, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
             pdf.finishPage(page)
         }
-
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "Scan_${System.currentTimeMillis()}.pdf")
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
             put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/WifiPrint/Scans")
         }
-
         val uri = context.contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
             ?: throw Exception("Failed to create file")
-
-        context.contentResolver.openOutputStream(uri)?.use { output ->
-            pdf.writeTo(output)
-        }
+        context.contentResolver.openOutputStream(uri)?.use { output -> pdf.writeTo(output) }
         pdf.close()
-
         return uri
     }
 
     override fun onCleared() {
         super.onCleared()
-        _state.value.scannedPages.forEach {
-            it.bitmap.recycle()
-            it.originalBitmap.recycle()
-        }
+        _state.value.scannedPages.forEach { it.bitmap.recycle(); it.originalBitmap.recycle() }
+        _state.value.idCardFrontBitmap?.recycle()
+        _state.value.idCardBackBitmap?.recycle()
     }
 }
