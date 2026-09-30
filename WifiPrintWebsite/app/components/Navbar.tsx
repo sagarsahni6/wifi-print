@@ -15,7 +15,7 @@ export default function Navbar() {
             <path d="M17 9V5C17 3.89543 16.1046 3 15 3H9C7.89543 3 7 3.89543 7 5V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M7 15H17V21H7V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span>WiFi Print</span>
+          <span>WiFi Print <small style={{ fontSize: "10px", background: "var(--primary-color)", color: "#fff", padding: "2px 6px", borderRadius: "6px", marginLeft: "4px", verticalAlign: "middle" }}>v2.0</small></span>
         </a>
 
         {/* Mobile menu toggle */}
@@ -32,8 +32,9 @@ export default function Navbar() {
 
         <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
           <a href="#how-it-works" onClick={() => setIsMenuOpen(false)}>How it Works</a>
-          <a href="#scanner" onClick={() => setIsMenuOpen(false)}>Scanner</a>
+          <a href="#scanner" onClick={() => setIsMenuOpen(false)}>Scanner &amp; OCR</a>
           <a href="#features" onClick={() => setIsMenuOpen(false)}>Features</a>
+          <a href="#comparison" onClick={() => setIsMenuOpen(false)}>Comparison</a>
           <a href="#printing-guide" onClick={() => setIsMenuOpen(false)}>Guide</a>
           <a href="#faq" onClick={() => setIsMenuOpen(false)}>FAQ</a>
           <ThemeToggle />
