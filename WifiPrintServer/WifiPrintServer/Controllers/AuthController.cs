@@ -14,18 +14,20 @@ namespace WifiPrintServer.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly AuthService _authService;
+    private readonly AppSettings _settings;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AuthService authService, ILogger<AuthController> logger)
+    public AuthController(AuthService authService, AppSettings settings, ILogger<AuthController> logger)
     {
         _authService = authService;
+        _settings = settings;
         _logger = logger;
     }
 
     /// <summary>
     /// POST /api/auth/request — Phone requests connection approval.
-    /// This call blocks (up to 60s) until the PC user clicks Allow or Deny.
-    /// No authentication required for this endpoint.
+    /// If on the SAME local network, device is auto-approved instantly.
+    /// If on ANOTHER network, QR code scan is strictly required.
     /// </summary>
     [AllowAnonymous]
     [HttpPost("request")]
@@ -37,13 +39,80 @@ public class AuthController : ControllerBase
         if (string.IsNullOrEmpty(request.DeviceName))
             return BadRequest(ApiResponse<object>.Fail("Device name required"));
 
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        // Clean IPv6-mapped IPv4 addresses (e.g., "::ffff:192.168.1.5" → "192.168.1.5")
+        var remoteIp = HttpContext.Connection.RemoteIpAddress;
+        var ipAddress = remoteIp?.ToString() ?? "unknown";
         if (ipAddress.StartsWith("::ffff:"))
             ipAddress = ipAddress.Substring(7);
 
-        _logger.LogInformation("Requesting approval for {Name} from {IP}", request.DeviceName, ipAddress);
+        bool isSameNetwork = remoteIp != null && NetworkUtils.IsSameLocalSubnet(remoteIp);
+        _logger.LogInformation("Connection request: {Name} from {IP} (SameNetwork={SameNet})",
+            request.DeviceName, ipAddress, isSameNetwork);
 
+        var cleanPin = request.Pin?.Trim().Replace(" ", "").Replace("-", "");
+        bool hasPin = !string.IsNullOrWhiteSpace(cleanPin);
+        bool hasQr = !string.IsNullOrWhiteSpace(request.QrToken);
+
+        // 1. If a PIN or QR token was provided, validate them regardless of network.
+        if (hasPin || hasQr)
+        {
+            if (hasPin && !string.Equals(cleanPin, _settings.CurrentConnectionPin?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Invalid PIN",
+                    request.DeviceName, ipAddress);
+                return StatusCode(403, ApiResponse<object>.Fail(
+                    "Invalid PIN. Please enter the current 6-digit PIN displayed on the PC screen."));
+            }
+
+            if (hasQr && !string.Equals(request.QrToken?.Trim(), _settings.CurrentQrPairingToken?.Trim(), StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Invalid QR token",
+                    request.DeviceName, ipAddress);
+                return StatusCode(403, ApiResponse<object>.Fail(
+                    "Invalid QR code. Please scan the QR code displayed on the PC screen."));
+            }
+
+            // Valid PIN/QR — auto-approve immediately
+            var autoAuth = _authService.AutoApproveLocalDevice(
+                request.DeviceName,
+                request.DeviceModel ?? "Unknown",
+                ipAddress);
+
+            _logger.LogInformation("Device '{Name}' approved via PIN/QR verification ({IP})",
+                request.DeviceName, ipAddress);
+            return Ok(ApiResponse<AuthResponse>.Ok(autoAuth, "Connected successfully via verification"));
+        }
+
+        // 2. If on ANOTHER network and no PIN/QR was provided:
+        if (!isSameNetwork)
+        {
+            if (_settings.RequireQrCodeOutsideLocalNetwork)
+            {
+                // Strict mode: PIN is required for cross-network
+                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Cross-network without PIN",
+                    request.DeviceName, ipAddress);
+                return StatusCode(403, ApiResponse<object>.Fail(
+                    "This device is on another network. Please enter the 6-digit PIN displayed on the PC server dashboard."));
+            }
+
+            // Not strict — fall through to manual approval dialog below
+            _logger.LogInformation("Cross-network connection from {Name} at {IP} — falling through to manual approval",
+                request.DeviceName, ipAddress);
+        }
+
+        // 3. Background Auto-Connect on the SAME local network (when phone opens without QR/PIN):
+        if (isSameNetwork && _settings.AutoApproveSameNetwork)
+        {
+            var autoAuth = _authService.AutoApproveLocalDevice(
+                request.DeviceName,
+                request.DeviceModel ?? "Unknown",
+                ipAddress);
+
+            _logger.LogInformation("Auto-approved client '{Name}' on same local network ({IP})",
+                request.DeviceName, ipAddress);
+            return Ok(ApiResponse<AuthResponse>.Ok(autoAuth, "Connected automatically on local network"));
+        }
+
+        // 4. Fallback to manual approval dialog flow
         var result = await _authService.RequestApprovalAsync(
             request.DeviceName,
             request.DeviceModel ?? "Unknown",
@@ -74,6 +143,18 @@ public class AuthController : ControllerBase
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         if (ipAddress.StartsWith("::ffff:"))
             ipAddress = ipAddress.Substring(7);
+
+        // If PIN matches the server's current rotating PIN, auto-approve immediately
+        var cleanPin = request.Pin?.Trim().Replace(" ", "").Replace("-", "");
+        if (!string.IsNullOrWhiteSpace(cleanPin) &&
+            string.Equals(cleanPin, _settings.CurrentConnectionPin?.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            var pinAuth = _authService.AutoApproveLocalDevice(
+                request.DeviceName,
+                "Unknown",
+                ipAddress);
+            return Ok(ApiResponse<AuthResponse>.Ok(pinAuth, "Pairing successful via PIN"));
+        }
 
         var result = await _authService.RequestApprovalAsync(
             request.DeviceName,
@@ -164,38 +245,49 @@ public class ConnectionRequest
 {
     public string DeviceName { get; set; } = string.Empty;
     public string? DeviceModel { get; set; }
+    public string? QrToken { get; set; }
+    public string? Pin { get; set; }
+    public bool IsSameNetwork { get; set; } = true;
 }
 
 /// <summary>
 /// Health check endpoint — no auth required.
-/// Used by Android for auto-connect verification.
+/// Used by Android for auto-connect and network reachability verification.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class StatusController : ControllerBase
 {
     private readonly PrinterService _printerService;
+    private readonly AppSettings _settings;
 
-    public StatusController(PrinterService printerService)
+    public StatusController(PrinterService printerService, AppSettings settings)
     {
         _printerService = printerService;
+        _settings = settings;
     }
 
     [AllowAnonymous]
     [HttpGet]
     public IActionResult Get()
     {
+        var remoteIp = HttpContext.Connection.RemoteIpAddress;
+        bool isSameSubnet = remoteIp != null && NetworkUtils.IsSameLocalSubnet(remoteIp);
         var printerCount = _printerService.GetAllPrinters().Count;
+
         var response = new ServerStatusResponse
         {
             Status = "Online",
-            ServerName = Environment.MachineName,
-            Version = "1.0.0",
+            ServerName = _settings.ServerName,
+            Version = "2.0.0",
             Timestamp = DateTime.UtcNow,
             RequiresPairing = true,
             PrinterAvailable = printerCount > 0,
             PrinterCount = printerCount,
-            Readiness = printerCount > 0 ? "Ready" : "Degraded"
+            Readiness = printerCount > 0 ? "Ready" : "Degraded",
+            IsSameNetwork = isSameSubnet,
+            RequiresQrCode = !isSameSubnet && _settings.RequireQrCodeOutsideLocalNetwork,
+            RequiresPin = !isSameSubnet && _settings.RequireQrCodeOutsideLocalNetwork
         };
 
         return Ok(response);

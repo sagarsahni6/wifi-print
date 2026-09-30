@@ -44,7 +44,14 @@ data class PrintUiState(
     val error: String? = null,
     val jobId: String? = null,
     val isLoadingPrinters: Boolean = false,
-    val isLoadingPageCount: Boolean = false
+    val isLoadingPageCount: Boolean = false,
+    // Password-protected / locked PDF support
+    val isPdfLocked: Boolean = false,
+    val pdfPassword: String? = null,
+    val isPasswordVerified: Boolean = false,
+    val showPasswordDialog: Boolean = false,
+    val passwordError: String? = null,
+    val isVerifyingPassword: Boolean = false
 )
 
 @HiltViewModel
@@ -92,7 +99,13 @@ class PrintViewModel @Inject constructor(
                 totalPages = null,
                 pageRangeMode = "All",
                 isBatchMode = false,
-                selectedFiles = emptyList()
+                selectedFiles = emptyList(),
+                isPdfLocked = false,
+                pdfPassword = null,
+                isPasswordVerified = false,
+                showPasswordDialog = false,
+                passwordError = null,
+                settings = it.settings.copy(pdfPassword = null)
             )
         }
         // Auto-fetch page count for PDFs
@@ -195,21 +208,132 @@ class PrintViewModel @Inject constructor(
             it.copy(
                 selectedFiles = emptyList(), isBatchMode = false,
                 selectedFileUri = null, selectedFileName = "",
-                totalPages = null, pageRangeMode = "All"
+                totalPages = null, pageRangeMode = "All",
+                isPdfLocked = false, pdfPassword = null,
+                isPasswordVerified = false, showPasswordDialog = false,
+                passwordError = null, settings = it.settings.copy(pdfPassword = null)
             )
         }
     }
 
     private fun fetchPageCount(uri: Uri, name: String) {
+        val lower = name.lowercase()
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
+            lower.endsWith(".webp") || lower.endsWith(".bmp") || lower.endsWith(".gif")) {
+            _state.update { it.copy(totalPages = 1, isLoadingPageCount = false) }
+            return
+        }
+
+        // Try reading page count locally via Android PdfRenderer (0 bandwidth, instant)
+        val (localCount, isLocked) = checkPdfStatus(uri)
+        if (isLocked) {
+            _state.update {
+                it.copy(
+                    isPdfLocked = true,
+                    isLoadingPageCount = false,
+                    showPasswordDialog = true,
+                    totalPages = null
+                )
+            }
+            return
+        }
+
+        if (localCount != null) {
+            _state.update { it.copy(totalPages = localCount, isPdfLocked = false, isLoadingPageCount = false) }
+            return
+        }
+
+        // Fallback to server endpoint if local extraction is not possible
         _state.update { it.copy(isLoadingPageCount = true) }
         viewModelScope.launch {
             repository.getPageCount(uri, name).fold(
                 onSuccess = { response ->
-                    _state.update { it.copy(totalPages = response.pageCount, isLoadingPageCount = false) }
+                    _state.update {
+                        it.copy(
+                            totalPages = if (response.requiresPassword) null else response.pageCount,
+                            isPdfLocked = response.isLocked || response.requiresPassword,
+                            showPasswordDialog = response.requiresPassword,
+                            isLoadingPageCount = false
+                        )
+                    }
                 },
                 onFailure = {
                     _state.update { it.copy(isLoadingPageCount = false) }
                 }
+            )
+        }
+    }
+
+    private fun checkPdfStatus(uri: Uri): Pair<Int?, Boolean> {
+        return try {
+            appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                    Pair(renderer.pageCount, false)
+                }
+            } ?: Pair(null, false)
+        } catch (_: SecurityException) {
+            // Android PdfRenderer throws SecurityException when document is encrypted with password
+            Pair(null, true)
+        } catch (e: Exception) {
+            val isEncrypted = e.message?.contains("password", ignoreCase = true) == true ||
+                              e.message?.contains("encrypt", ignoreCase = true) == true
+            Pair(null, isEncrypted)
+        }
+    }
+
+    fun setShowPasswordDialog(show: Boolean) {
+        _state.update { it.copy(showPasswordDialog = show, passwordError = null) }
+    }
+
+    fun unlockPdfWithPassword(password: String) {
+        val uri = _state.value.selectedFileUri ?: return
+        val name = _state.value.selectedFileName
+        _state.update { it.copy(isVerifyingPassword = true, passwordError = null) }
+
+        viewModelScope.launch {
+            repository.getPageCount(uri, name, password).fold(
+                onSuccess = { response ->
+                    if (response.requiresPassword) {
+                        _state.update {
+                            it.copy(
+                                isVerifyingPassword = false,
+                                passwordError = "Incorrect password. Please try again."
+                            )
+                        }
+                    } else {
+                        _state.update {
+                            it.copy(
+                                isVerifyingPassword = false,
+                                isPdfLocked = true,
+                                isPasswordVerified = true,
+                                pdfPassword = password,
+                                settings = it.settings.copy(pdfPassword = password),
+                                totalPages = response.pageCount,
+                                showPasswordDialog = false,
+                                passwordError = null
+                            )
+                        }
+                    }
+                },
+                onFailure = { err ->
+                    val isPassErr = err.message?.contains("password", ignoreCase = true) == true
+                    _state.update {
+                        it.copy(
+                            isVerifyingPassword = false,
+                            passwordError = if (isPassErr) "Incorrect password" else "Verification failed: ${err.message}"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun removePdfPassword() {
+        _state.update {
+            it.copy(
+                pdfPassword = null,
+                isPasswordVerified = false,
+                settings = it.settings.copy(pdfPassword = null)
             )
         }
     }

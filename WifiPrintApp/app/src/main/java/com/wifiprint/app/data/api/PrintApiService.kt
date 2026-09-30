@@ -45,11 +45,12 @@ interface PrintApiService {
         @Part("settingsJson") settings: RequestBody
     ): Response<ApiResponse<PrintJobResponse>>
 
-    /** Upload a file and get its page count (for page range selector). */
+    /** Upload a file and get its page count (for page range selector), supporting password-protected PDFs. */
     @Multipart
     @POST("api/print/pagecount")
     suspend fun getPageCount(
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Part("password") password: RequestBody? = null
     ): Response<ApiResponse<PageCountResponse>>
 
     /** Get all jobs, optionally filtered by status. Uses ServerPrintJob DTO to handle DateTime strings. */

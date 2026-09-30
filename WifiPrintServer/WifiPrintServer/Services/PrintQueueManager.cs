@@ -18,6 +18,7 @@ public class PrintQueueManager : BackgroundService
     private readonly ServerStateStore _stateStore;
     private readonly ILogger<PrintQueueManager> _logger;
     private readonly SemaphoreSlim _signal = new(0);
+    private readonly ConcurrentDictionary<string, byte> _busyPrinters = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Fired whenever a job's status changes. Used by SignalR hub to push updates.
@@ -102,6 +103,29 @@ public class PrintQueueManager : BackgroundService
 
         _logger.LogInformation("Job {JobId} cancelled", jobId);
         return true;
+    }
+
+    /// <summary>
+    /// Removes all completed or cancelled jobs from memory.
+    /// </summary>
+    public int ClearCompletedJobs()
+    {
+        var completedIds = _jobs.Values
+            .Where(j => j.Status == PrintJobStatus.Completed || j.Status == PrintJobStatus.Cancelled)
+            .Select(j => j.Id)
+            .ToList();
+
+        int count = 0;
+        foreach (var id in completedIds)
+        {
+            if (_jobs.TryRemove(id, out _))
+            {
+                count++;
+            }
+        }
+
+        _logger.LogInformation("Cleared {Count} completed/cancelled jobs", count);
+        return count;
     }
 
     /// <summary>
@@ -247,18 +271,18 @@ public class PrintQueueManager : BackgroundService
     }
 
     /// <summary>
-    /// Background processing loop — picks jobs from queue and sends them to the printer.
-    /// Skips paused jobs and prioritizes high-priority jobs.
+    /// Background processing loop — picks jobs from queue and sends them to printers.
+    /// Runs concurrently across different printers, processing one job per printer at a time (Feature 7).
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Print queue processor started");
+        _logger.LogInformation("Print queue processor started (parallel per-printer enabled)");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             await _signal.WaitAsync(stoppingToken);
 
-            if (!TryDequeueNextJob(out var jobId))
+            if (!TryDequeueNextJobForAvailablePrinter(out var jobId))
                 continue;
 
             if (!_jobs.TryGetValue(jobId, out var job))
@@ -266,13 +290,35 @@ public class PrintQueueManager : BackgroundService
 
             // Skip cancelled jobs
             if (job.Status == PrintJobStatus.Cancelled)
+            {
+                ReleasePrinterForJob(job);
                 continue;
+            }
 
             // Skip paused jobs (they'll be re-enqueued when resumed)
             if (job.Status == PrintJobStatus.Paused)
+            {
+                ReleasePrinterForJob(job);
                 continue;
+            }
 
-            await ProcessJobAsync(job, stoppingToken);
+            // Run concurrently per printer so other printers aren't blocked
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessJobAsync(job, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unexpected error in print task for job {JobId}", job.Id);
+                    FailJob(job, "unexpected_error", ex.Message);
+                }
+                finally
+                {
+                    ReleasePrinterForJob(job);
+                }
+            }, stoppingToken);
         }
     }
 
@@ -401,6 +447,47 @@ public class PrintQueueManager : BackgroundService
         lock (_queueLock)
         {
             _queuedJobIds.Remove(jobId);
+        }
+    }
+
+    private static string GetPrinterKey(string? printerName) =>
+        string.IsNullOrWhiteSpace(printerName) ? "DEFAULT_PRINTER" : printerName.Trim();
+
+    private bool TryDequeueNextJobForAvailablePrinter(out string jobId)
+    {
+        lock (_queueLock)
+        {
+            var ordered = GetOrderedQueuedJobIds();
+            foreach (var candidateId in ordered)
+            {
+                if (_jobs.TryGetValue(candidateId, out var job))
+                {
+                    var key = GetPrinterKey(job.PrinterName);
+                    if (!_busyPrinters.ContainsKey(key))
+                    {
+                        _busyPrinters.TryAdd(key, 0);
+                        _queuedJobIds.Remove(candidateId);
+                        jobId = candidateId;
+                        return true;
+                    }
+                }
+            }
+
+            jobId = string.Empty;
+            return false;
+        }
+    }
+
+    private void ReleasePrinterForJob(PrintJob job)
+    {
+        var key = GetPrinterKey(job.PrinterName);
+        _busyPrinters.TryRemove(key, out _);
+        lock (_queueLock)
+        {
+            if (_queuedJobIds.Count > 0)
+            {
+                try { _signal.Release(); } catch (SemaphoreFullException) { }
+            }
         }
     }
 

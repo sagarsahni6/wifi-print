@@ -30,7 +30,7 @@ public class FileProcessingService
     public async Task<(string? FilePath, string? Error)> SaveAndValidateFileAsync(
         Stream fileStream, string fileName, long fileSize)
     {
-        fileName = Path.GetFileName(fileName);
+        fileName = SanitizeFileName(fileName);
         var ext = Path.GetExtension(fileName);
         if (!SupportedExtensions.Contains(ext))
             return (null, $"Unsupported file type: {ext}");
@@ -128,6 +128,20 @@ public class FileProcessingService
         if (ext is ".docx" or ".doc") return "Document";
         if (ext is ".txt" or ".text") return "Text";
         return "Unknown";
+    }
+
+    public static string SanitizeFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "document";
+
+        fileName = Path.GetFileName(fileName).Trim();
+        foreach (char c in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(c, '_');
+        }
+        fileName = fileName.Replace("\0", string.Empty);
+        return string.IsNullOrWhiteSpace(fileName) ? "document" : fileName;
     }
 
     public void CleanupOldFiles()

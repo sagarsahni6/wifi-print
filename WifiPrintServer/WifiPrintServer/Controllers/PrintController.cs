@@ -98,6 +98,20 @@ public class PrintController : ControllerBase
         if (convertedPath == null)
             return BadRequest(ApiResponse<object>.Fail(convertError ?? "File conversion failed"));
 
+        // Check if PDF is encrypted and requires password
+        var finalPdfPath = convertedPath ?? filePath;
+        if (Path.GetExtension(finalPdfPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            var pdfValidation = _printerService.ValidatePdf(finalPdfPath, settings.PdfPassword);
+            if (pdfValidation.RequiresPassword)
+            {
+                _logger.LogWarning("Print rejected: file {File} requires password", file.FileName);
+                return BadRequest(ApiResponse<object>.Fail(
+                    pdfValidation.ErrorMessage ?? "This PDF is password-protected. Please provide the password to print.",
+                    new { requiresPassword = true, isLocked = true }));
+            }
+        }
+
         // Get device info from JWT claims (deviceId already extracted above for block check)
         var deviceName = User.FindFirst("deviceName")?.Value ?? "Unknown Device";
 
@@ -120,7 +134,8 @@ public class PrintController : ControllerBase
 
         var jobId = _queueManager.EnqueueJob(job);
 
-        _logger.LogInformation("Print job created: {JobId} for {File}", jobId, file.FileName);
+        _logger.LogInformation("Print job created: {JobId} for {File} (Encrypted={Encrypted})",
+            jobId, file.FileName, !string.IsNullOrEmpty(settings.PdfPassword));
 
         return Ok(ApiResponse<PrintJobResponse>.Ok(new PrintJobResponse
         {
@@ -132,11 +147,11 @@ public class PrintController : ControllerBase
 
     /// <summary>
     /// POST /api/print/pagecount — Get the page count of a PDF file without printing.
-    /// Used by the Android app to populate the page range selector.
+    /// Supports password-protected / locked PDF documents.
     /// </summary>
     [HttpPost("pagecount")]
     [RequestSizeLimit(104_857_600)]
-    public async Task<IActionResult> GetPageCount(IFormFile file)
+    public async Task<IActionResult> GetPageCount(IFormFile file, [FromForm] string? password = null)
     {
         if (file == null || file.Length == 0)
             return BadRequest(ApiResponse<object>.Fail("No file uploaded"));
@@ -153,8 +168,27 @@ public class PrintController : ControllerBase
             using (var fs = new FileStream(tempPath, FileMode.Create))
                 await file.CopyToAsync(fs);
 
-            var pageCount = _printerService.GetPdfPageCount(tempPath);
-            return Ok(ApiResponse<object>.Ok(new { pageCount, fileType = "PDF" }, "Page count retrieved"));
+            var validation = _printerService.ValidatePdf(tempPath, password);
+            if (validation.RequiresPassword)
+            {
+                return Ok(ApiResponse<object>.Fail(
+                    validation.ErrorMessage ?? "Password required",
+                    new
+                    {
+                        isLocked = true,
+                        requiresPassword = true,
+                        pageCount = 0,
+                        fileType = "PDF"
+                    }));
+            }
+
+            return Ok(ApiResponse<object>.Ok(new
+            {
+                pageCount = validation.PageCount,
+                fileType = "PDF",
+                isLocked = validation.IsEncrypted,
+                isPasswordVerified = validation.IsValid && validation.IsEncrypted
+            }, "Page count retrieved"));
         }
         finally
         {

@@ -13,4 +13,11 @@ public class PrintSettings
     public string Quality { get; set; } = "Normal";       // Draft, Normal, High
     public string? PageRange { get; set; }                 // e.g., "1-5", "1,3,5"
     public string? SelectedPrinterId { get; set; }
+    public bool Collate { get; set; } = true;
+    public string? WatermarkText { get; set; }
+
+    /// <summary>
+    /// Optional password to decrypt and print password-protected / locked PDF documents.
+    /// </summary>
+    public string? PdfPassword { get; set; }
 }

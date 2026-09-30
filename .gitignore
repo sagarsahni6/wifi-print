@@ -76,11 +76,12 @@ signing.properties
 appsettings.*.json
 !appsettings.json
 
-# =============================================
 # Logs & Temp
-# =============================================
 *.log
 logs/
 tmp/
 temp/
 WifiPrintServer/publish_out/
+publish/
+release-package/
+*.zip

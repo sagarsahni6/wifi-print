@@ -8,12 +8,16 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,7 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +82,56 @@ fun DiscoveryScreen(
 
     LaunchedEffect(connectState.isConnected) {
         if (connectState.isConnected) onConnected()
+    }
+
+    // PIN prompt dialog when connecting across different networks
+    if (connectState.requiresPinPrompt) {
+        var inputPin by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { connectViewModel.dismissPinPrompt() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Lock, contentDescription = null, tint = Primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Enter Server PIN")
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "This device is on another network. Enter the 6-digit PIN currently displayed on the PC server dashboard:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = inputPin,
+                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) inputPin = it },
+                        label = { Text("6-Digit PIN") },
+                        placeholder = { Text("123456") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (inputPin.length == 6) {
+                            connectViewModel.submitPin(inputPin)
+                        }
+                    },
+                    enabled = inputPin.length == 6 && !connectState.isConnecting
+                ) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { connectViewModel.dismissPinPrompt() }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Column(
@@ -220,6 +274,140 @@ fun DiscoveryScreen(
             }
 
             // ═══════════════════════════════════════════
+            //  ALTERNATIVE: Connect with PIN (for other networks)
+            // ═══════════════════════════════════════════
+            var showPinSection by remember { mutableStateOf(false) }
+            var pinIp by remember { mutableStateOf("") }
+            var pinPort by remember { mutableStateOf("5000") }
+            var pinCode by remember { mutableStateOf("") }
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Header row — always visible
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Secondary.copy(alpha = 0.12f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.Pin, null,
+                                        tint = Secondary, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Connect with PIN",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold)
+                                Text("For different network or manual entry",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        IconButton(onClick = { showPinSection = !showPinSection }) {
+                            Icon(
+                                if (showPinSection) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = "Toggle PIN section"
+                            )
+                        }
+                    }
+
+                    // Expandable PIN entry form
+                    AnimatedVisibility(
+                        visible = showPinSection,
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(16.dp))
+
+                            // IP Address input
+                            OutlinedTextField(
+                                value = pinIp,
+                                onValueChange = { pinIp = it },
+                                label = { Text("Server IP Address") },
+                                placeholder = { Text("192.168.1.100") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                leadingIcon = { Icon(Icons.Filled.Computer, null, modifier = Modifier.size(20.dp)) }
+                            )
+
+                            Spacer(Modifier.height(10.dp))
+
+                            // Port input
+                            OutlinedTextField(
+                                value = pinPort,
+                                onValueChange = { if (it.all { c -> c.isDigit() } && it.length <= 5) pinPort = it },
+                                label = { Text("Port") },
+                                placeholder = { Text("5000") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                leadingIcon = { Icon(Icons.Filled.Tag, null, modifier = Modifier.size(20.dp)) }
+                            )
+
+                            Spacer(Modifier.height(10.dp))
+
+                            // PIN input
+                            OutlinedTextField(
+                                value = pinCode,
+                                onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) pinCode = it },
+                                label = { Text("6-Digit PIN (from PC server)") },
+                                placeholder = { Text("000000") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                leadingIcon = { Icon(Icons.Filled.Lock, null, modifier = Modifier.size(20.dp)) }
+                            )
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Button(
+                                onClick = {
+                                    val port = pinPort.toIntOrNull() ?: 5000
+                                    if (pinIp.isNotBlank() && pinCode.length == 6) {
+                                        connectViewModel.connectWithPin(pinIp, port, pinCode)
+                                    }
+                                },
+                                enabled = pinIp.isNotBlank() && pinCode.length == 6 && !connectState.isConnecting,
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                if (connectState.isConnecting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Connecting...")
+                                } else {
+                                    Icon(Icons.Filled.Link, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Connect with PIN", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ═══════════════════════════════════════════
             //  Nearby permission warning
             // ═══════════════════════════════════════════
             if (!hasNearbyWifiPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -290,7 +478,15 @@ fun DiscoveryScreen(
                     ServerCard(
                         server = server,
                         isConnecting = connectState.isConnecting && connectState.connectingTo == server.id,
-                        onClick = { connectViewModel.connectToServer(server) }
+                        onClick = {
+                            if (server.isSameNetwork) {
+                                connectViewModel.connectToServer(server)
+                            } else {
+                                // Cross-network: attempt connection first — if server requires PIN,
+                                // the error handler in ConnectViewModel will trigger the PIN prompt dialog
+                                connectViewModel.connectToServer(server)
+                            }
+                        }
                     )
                 }
             }
@@ -336,14 +532,14 @@ fun DiscoveryScreen(
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(14.dp))
-                        val context = LocalContext.current
+                        val ctx = LocalContext.current
                         OutlinedButton(
                             onClick = {
                                 val intent = Intent(
                                     Intent.ACTION_VIEW,
                                     Uri.parse("https://wifiprint.app/#download")
                                 )
-                                context.startActivity(intent)
+                                ctx.startActivity(intent)
                             },
                             shape = RoundedCornerShape(20.dp)
                         ) {
@@ -356,7 +552,7 @@ fun DiscoveryScreen(
             }
 
             // ═══════════════════════════════════════════
-            //  How to connect guide
+            //  How to connect guide (updated for QR + PIN)
             // ═══════════════════════════════════════════
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -366,8 +562,8 @@ fun DiscoveryScreen(
                     Text("How to Connect", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     HelpStep("1", "Run WiFi Print Server on your Windows PC")
-                    HelpStep("2", "Ensure both phone and PC are on the same WiFi")
-                    HelpStep("3", "Scan the QR code shown on the server dashboard")
+                    HelpStep("2", "Same Wi-Fi → Auto Connect (no setup needed)")
+                    HelpStep("3", "Different network → Scan QR code or enter PIN")
                     HelpStep("4", "Accept the connection request on your PC")
                 }
             }
@@ -408,12 +604,43 @@ private fun ServerCard(
                 Text("${server.ipAddress}:${server.port}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                if (server.isSameNetwork) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Green400.copy(alpha = 0.1f)
+                    ) {
+                        Text(
+                            "⚡ Same Wi-Fi — Auto Connect",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Green400,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Orange400.copy(alpha = 0.1f)
+                    ) {
+                        Text(
+                            "🔒 Another Network — QR or PIN Required",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Orange400,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
             if (isConnecting) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             } else {
-                Icon(Icons.Filled.ChevronRight, null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    if (server.isSameNetwork) Icons.Filled.ChevronRight else Icons.Filled.QrCodeScanner,
+                    contentDescription = null,
+                    tint = if (server.isSameNetwork) MaterialTheme.colorScheme.onSurfaceVariant else Orange400
+                )
             }
         }
     }

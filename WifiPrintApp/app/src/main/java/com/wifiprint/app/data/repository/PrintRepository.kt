@@ -20,6 +20,7 @@ import com.wifiprint.app.data.models.PrinterInfo
 import com.wifiprint.app.data.models.ServerInfo
 import com.wifiprint.app.data.models.ServerPrintJob
 import com.wifiprint.app.network.CertificatePinning
+import com.wifiprint.app.network.NetworkMonitor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -94,7 +95,9 @@ class PrintRepository @Inject constructor(
     suspend fun requestConnectionApproval(
         serverIp: String,
         port: Int,
-        deviceName: String
+        deviceName: String,
+        qrToken: String? = null,
+        pin: String? = null
     ): Result<AuthResponse> {
         var capturedFingerprint: String? = null
 
@@ -108,9 +111,14 @@ class PrintRepository @Inject constructor(
                 onCertificateSeen = { fingerprint -> capturedFingerprint = fingerprint }
             )
 
+            val isSameNet = NetworkMonitor(context).isSameLocalSubnet(serverIp)
+
             val request = ConnectionRequest(
                 deviceName = deviceName,
-                deviceModel = android.os.Build.MODEL
+                deviceModel = android.os.Build.MODEL,
+                qrToken = qrToken,
+                pin = pin,
+                isSameNetwork = isSameNet
             )
 
             val response = tempApi.requestConnection(request)
@@ -130,7 +138,9 @@ class PrintRepository @Inject constructor(
                     lastConnected = System.currentTimeMillis(),
                     lastAuthCheckAt = System.currentTimeMillis(),
                     connectionHealth = "Healthy"
-                )
+                ).apply {
+                    isSameNetwork = isSameNet
+                }
                 serverDao.insertServer(server)
                 connectToServer(server)
 
@@ -255,8 +265,8 @@ class PrintRepository @Inject constructor(
         }
     }
 
-    /** Get page count of a file without reading it fully into memory. */
-    suspend fun getPageCount(fileUri: Uri, fileName: String): Result<PageCountResponse> {
+    /** Get page count of a file without reading it fully into memory, supporting password-protected PDFs. */
+    suspend fun getPageCount(fileUri: Uri, fileName: String, password: String? = null): Result<PageCountResponse> {
         return runApiCall("Failed to get page count") { api ->
             val contentLength = getContentLength(fileUri)
             val mimeType = context.contentResolver.getType(fileUri) ?: "application/octet-stream"
@@ -271,11 +281,16 @@ class PrintRepository @Inject constructor(
                 )
             )
 
-            val response = api.getPageCount(filePart)
+            val passwordPart = password?.let {
+                okhttp3.RequestBody.create("text/plain".toMediaTypeOrNull(), it)
+            }
+
+            val response = api.getPageCount(filePart, passwordPart)
             if (response.isSuccessful && response.body()?.data != null) {
                 Result.success(response.body()!!.data!!)
             } else {
-                Result.failure(apiFailure(response, "Failed to get page count"))
+                val errorMsg = response.body()?.error ?: "Failed to get page count"
+                Result.failure(Exception(errorMsg))
             }
         }
     }

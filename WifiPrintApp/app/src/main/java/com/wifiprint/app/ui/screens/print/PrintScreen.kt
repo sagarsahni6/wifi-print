@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -28,6 +29,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,11 +41,6 @@ import coil.request.ImageRequest
 import com.wifiprint.app.data.models.PrintSettings
 import com.wifiprint.app.data.models.SelectedFile
 import com.wifiprint.app.ui.theme.*
-import com.wifiprint.app.ui.screens.print.ImageEditorHelper
-import android.content.Intent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
-import com.yalantis.ucrop.UCrop
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,6 +125,16 @@ fun PrintScreen(
 
     LaunchedEffect(state.success) {
         if (state.success) onJobCreated()
+    }
+
+    if (state.showPasswordDialog) {
+        PdfPasswordDialog(
+            fileName = state.selectedFileName,
+            errorMessage = state.passwordError,
+            isVerifying = state.isVerifyingPassword,
+            onConfirm = { password -> viewModel.unlockPdfWithPassword(password) },
+            onDismiss = { viewModel.setShowPasswordDialog(false) }
+        )
     }
 
     Column(
@@ -239,6 +248,80 @@ fun PrintScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Tertiary, fontWeight = FontWeight.Medium)
                         }
+
+                        // Locked PDF Banner / Status
+                        if (state.isPdfLocked) {
+                            Spacer(Modifier.height(8.dp))
+                            if (state.isPasswordVerified) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Green50,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.LockOpen, null, tint = Green400, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "Password Verified (${state.totalPages ?: 1} pages)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF2E7D32)
+                                            )
+                                            Text(
+                                                "PDF unlocked for printing",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF388E3C)
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { viewModel.setShowPasswordDialog(true) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Change", style = MaterialTheme.typography.labelMedium, color = Primary)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Orange50,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.Lock, null, tint = Orange400, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "Password-Protected PDF",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFE65100)
+                                            )
+                                            Text(
+                                                "Password required to print",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFEF6C00)
+                                            )
+                                        }
+                                        Button(
+                                            onClick = { viewModel.setShowPasswordDialog(true) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Orange400),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Enter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(8.dp))
                     }
 
@@ -327,7 +410,13 @@ fun PrintScreen(
                         Spacer(Modifier.height(12.dp))
 
                         when (state.fileType) {
-                            "PDF" -> InlinePdfPreview(uri = state.selectedFileUri!!)
+                            "PDF" -> InlinePdfPreview(
+                                uri = state.selectedFileUri!!,
+                                isLocked = state.isPdfLocked,
+                                isPasswordVerified = state.isPasswordVerified,
+                                totalPages = state.totalPages,
+                                onUnlockClick = { viewModel.setShowPasswordDialog(true) }
+                            )
                             "Image" -> InlineImagePreview(uri = state.selectedFileUri!!)
                             "Text" -> InlineTextPreview(uri = state.selectedFileUri!!)
                             else -> {
@@ -551,7 +640,13 @@ fun PrintScreen(
 
             // ── Gradient Print Button ────────────────────────────────────
             Button(
-                onClick = { viewModel.submitPrintJob() },
+                onClick = {
+                    if (state.isPdfLocked && !state.isPasswordVerified) {
+                        viewModel.setShowPasswordDialog(true)
+                    } else {
+                        viewModel.submitPrintJob()
+                    }
+                },
                 enabled = (state.selectedFileUri != null || state.selectedFiles.isNotEmpty()) &&
                     state.selectedPrinter != null && !state.isUploading,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -576,11 +671,16 @@ fun PrintScreen(
                         Text("Uploading...", fontWeight = FontWeight.SemiBold)
                     }
                 } else {
-                    Icon(Icons.Filled.Print, null)
+                    Icon(
+                        if (state.isPdfLocked && !state.isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Print,
+                        null
+                    )
                     Spacer(Modifier.width(12.dp))
                     if (state.isBatchMode) {
                         Text("Print ${state.selectedFiles.size} Files",
                             fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    } else if (state.isPdfLocked && !state.isPasswordVerified) {
+                        Text("Unlock & Print", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     } else {
                         Text("Print", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
@@ -622,20 +722,86 @@ fun SegmentedButtons(options: List<String>, selected: String, onSelected: (Strin
 // ── Inline Preview Composables ──────────────────────────────────────────
 
 @Composable
-private fun InlinePdfPreview(uri: Uri) {
+private fun InlinePdfPreview(
+    uri: Uri,
+    isLocked: Boolean = false,
+    isPasswordVerified: Boolean = false,
+    totalPages: Int? = null,
+    onUnlockClick: () -> Unit = {}
+) {
+    if (isLocked) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isPasswordVerified) Green50 else Orange50,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = if (isPasswordVerified) Green400 else Orange400,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    if (isPasswordVerified) "Encrypted PDF Unlocked" else "Password-Protected PDF",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (isPasswordVerified)
+                        "Password verified. ${totalPages ?: 1} page(s) ready to print."
+                    else
+                        "Encrypted document content is protected. Enter password to unlock and print.",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!isPasswordVerified) {
+                    Spacer(Modifier.height(14.dp))
+                    FilledTonalButton(
+                        onClick = onUnlockClick,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Key, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Enter Password")
+                    }
+                }
+            }
+        }
+        return
+    }
+
     val context = LocalContext.current
     var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
     var pageCount by remember(uri) { mutableStateOf(0) }
+    var currentPage by remember(uri) { mutableStateOf(0) }
     var error by remember(uri) { mutableStateOf<String?>(null) }
+    var isLoading by remember(uri) { mutableStateOf(true) }
 
-    LaunchedEffect(uri) {
+    LaunchedEffect(uri, currentPage) {
+        isLoading = true
         try {
             context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
                 val renderer = PdfRenderer(fd)
                 try {
                     pageCount = renderer.pageCount
                     if (renderer.pageCount > 0) {
-                        val page = renderer.openPage(0)
+                        val validPage = currentPage.coerceIn(0, renderer.pageCount - 1)
+                        val page = renderer.openPage(validPage)
                         val bmp = Bitmap.createBitmap(
                             page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888
                         )
@@ -648,8 +814,12 @@ private fun InlinePdfPreview(uri: Uri) {
                     renderer.close()
                 }
             } ?: run { error = "Cannot open PDF" }
+        } catch (_: SecurityException) {
+            error = "Password protected document"
         } catch (e: Exception) {
             error = "PDF render failed: ${e.message}"
+        } finally {
+            isLoading = false
         }
     }
 
@@ -658,37 +828,77 @@ private fun InlinePdfPreview(uri: Uri) {
             Text(error!!, color = Red400, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(8.dp))
         }
-        bitmap == null -> {
+        bitmap == null && isLoading -> {
             Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(modifier = Modifier.size(32.dp))
             }
         }
         else -> {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Image(
-                    bitmap = bitmap!!.asImageBitmap(),
-                    contentDescription = "PDF Preview",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White),
-                    contentScale = ContentScale.Fit
-                )
-                // Page count badge
-                if (pageCount > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Primary.copy(alpha = 0.9f),
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = "PDF Preview Page ${currentPage + 1}",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White),
+                        contentScale = ContentScale.Fit
+                    )
+                    // Page count badge
+                    if (pageCount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Primary.copy(alpha = 0.9f),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                        ) {
+                            Text(
+                                "Page ${currentPage + 1} of $pageCount",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Page Navigation Bar if multiple pages
+                if (pageCount > 1) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        FilledTonalButton(
+                            onClick = { if (currentPage > 0) currentPage-- },
+                            enabled = currentPage > 0,
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Filled.ChevronLeft, "Previous page", modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Prev", style = MaterialTheme.typography.labelMedium)
+                        }
+
                         Text(
-                            "$pageCount pages",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            "Page ${currentPage + 1} of $pageCount",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
                         )
+
+                        FilledTonalButton(
+                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
+                            enabled = currentPage < pageCount - 1,
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Text("Next", style = MaterialTheme.typography.labelMedium)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.ChevronRight, "Next page", modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
@@ -739,4 +949,109 @@ private fun InlineTextPreview(uri: Uri) {
             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
         )
     }
+}
+
+@Composable
+fun PdfPasswordDialog(
+    fileName: String,
+    errorMessage: String?,
+    isVerifying: Boolean,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isVerifying) onDismiss() },
+        icon = {
+            Surface(
+                shape = CircleShape,
+                color = Primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(52.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.Lock,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+        },
+        title = {
+            Text(
+                "Unlock PDF Document",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "\"$fileName\" is password-protected. Enter the password below to decrypt and prepare for printing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Document Password") },
+                    placeholder = { Text("Enter password") },
+                    singleLine = true,
+                    isError = errorMessage != null,
+                    supportingText = {
+                        if (errorMessage != null) {
+                            Text(errorMessage, color = Red400, style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        val icon = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(icon, contentDescription = if (passwordVisible) "Hide password" else "Show password")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (password.isNotEmpty()) onConfirm(password) },
+                enabled = password.isNotEmpty() && !isVerifying,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (isVerifying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Verifying...")
+                } else {
+                    Icon(Icons.Filled.LockOpen, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Unlock")
+                }
+            }
+        },
+        dismissButton = {
+            if (!isVerifying) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }

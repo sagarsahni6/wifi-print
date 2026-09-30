@@ -1,16 +1,20 @@
 package com.wifiprint.app.ui.screens.home
 
 import android.app.Application
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wifiprint.app.data.models.PrintJob
 import com.wifiprint.app.data.repository.PrintRepository
+import com.wifiprint.app.discovery.NsdDiscoveryManager
 import com.wifiprint.app.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class HomeUiState(
@@ -114,6 +118,8 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private val discoveryManager = NsdDiscoveryManager(application)
+
     /**
      * Attempt to connect to the last paired server.
      */
@@ -128,47 +134,79 @@ class HomeViewModel @Inject constructor(
 
             _uiState.update { it.copy(isConnecting = true) }
 
-            val server = repository.getLastPairedServer()
-            if (server != null) {
+            // 1. Try reconnecting to the last paired server if still reachable
+            val savedServer = repository.getLastPairedServer()
+            if (savedServer != null) {
                 try {
-                    repository.connectToServer(server)
-
-                    // Verify connection by calling the server status endpoint
+                    repository.connectToServer(savedServer)
                     val verified = repository.verifyConnection()
                     if (verified) {
-                        Log.d(TAG, "Auto-connect verified: ${server.name}")
+                        Log.d(TAG, "Auto-connect verified with saved server: ${savedServer.name}")
                         _uiState.update {
                             it.copy(
                                 isConnected = true,
                                 isConnecting = false,
-                                serverName = server.name,
-                                serverIp = "${server.ipAddress}:${server.port}",
+                                serverName = savedServer.name,
+                                serverIp = "${savedServer.ipAddress}:${savedServer.port}",
                                 connectionMessage = null
                             )
                         }
-                    } else {
-                        Log.w(TAG, "Auto-connect failed verification for ${server.name}")
-                        _uiState.update {
-                            it.copy(
-                                isConnected = false,
-                                isConnecting = false,
-                                connectionMessage = "Saved server trust or approval is no longer valid. Open Connect to re-approve."
-                            )
-                        }
+                        return@launch
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Auto-connect failed: ${e.message}")
-                    _uiState.update {
-                        it.copy(
-                            isConnected = false,
-                            isConnecting = false,
-                            connectionMessage = e.message ?: "Failed to reconnect to the saved server"
-                        )
+                    Log.d(TAG, "Reconnecting to saved server failed: ${e.message}")
+                }
+            }
+
+            // 2. Scan network for servers on the SAME local Wi-Fi subnet and auto-connect
+            Log.d(TAG, "Scanning for WiFi Print servers on the same local network...")
+            discoveryManager.startDiscovery()
+
+            var autoConnected = false
+            try {
+                withTimeoutOrNull(4500L) {
+                    discoveryManager.discoveredServers.first { list ->
+                        val localServer = list.firstOrNull { it.isSameNetwork }
+                        if (localServer != null) {
+                            Log.d(TAG, "Found local server on same Wi-Fi: ${localServer.name} (${localServer.ipAddress})")
+                            val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+                            val autoResult = repository.requestConnectionApproval(
+                                serverIp = localServer.ipAddress,
+                                port = localServer.port,
+                                deviceName = deviceName
+                            )
+
+                            autoResult.fold(
+                                onSuccess = { auth ->
+                                    Log.d(TAG, "Auto-connection successful: ${auth.serverName}")
+                                    autoConnected = true
+                                    _uiState.update {
+                                        it.copy(
+                                            isConnected = true,
+                                            isConnecting = false,
+                                            serverName = auth.serverName,
+                                            serverIp = "${localServer.ipAddress}:${localServer.port}",
+                                            connectionMessage = null
+                                        )
+                                    }
+                                },
+                                onFailure = { e ->
+                                    Log.w(TAG, "Auto-connect attempt failed: ${e.message}")
+                                }
+                            )
+                            true // Stop collecting — we found a same-network server
+                        } else {
+                            false // Keep waiting for more servers
+                        }
                     }
                 }
-            } else {
-                Log.d(TAG, "No paired server found")
-                _uiState.update { it.copy(isConnecting = false, connectionMessage = null) }
+            } catch (_: Exception) {
+            } finally {
+                discoveryManager.stopDiscovery()
+                // Only reset isConnecting if we didn't successfully connect
+                if (!autoConnected) {
+                    _uiState.update { it.copy(isConnecting = false) }
+                }
             }
         }
     }
@@ -181,6 +219,7 @@ class HomeViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        discoveryManager.stopDiscovery()
         networkMonitor.stopMonitoring()
         super.onCleared()
     }

@@ -21,7 +21,8 @@ public class QrCodeService
         string ipAddress,
         int port,
         string serverName,
-        X509Certificate2? certificate)
+        X509Certificate2? certificate,
+        string? qrToken = null)
     {
         var fingerprint = certificate != null
             ? BitConverter.ToString(certificate.GetCertHash()).Replace("-", ":")
@@ -32,7 +33,8 @@ public class QrCodeService
             ip = ipAddress,
             port = port,
             name = serverName,
-            cert = fingerprint
+            cert = fingerprint,
+            token = qrToken ?? ""
         });
 
         using var qrGenerator = new QRCodeGenerator();
@@ -57,7 +59,8 @@ public class QrCodeService
         string ipAddress,
         int port,
         string serverName,
-        X509Certificate2? certificate)
+        X509Certificate2? certificate,
+        string? qrToken = null)
     {
         var fingerprint = certificate != null
             ? BitConverter.ToString(certificate.GetCertHash()).Replace("-", ":")
@@ -68,7 +71,8 @@ public class QrCodeService
             ip = ipAddress,
             port = port,
             name = serverName,
-            cert = fingerprint
+            cert = fingerprint,
+            token = qrToken ?? ""
         });
     }
 }

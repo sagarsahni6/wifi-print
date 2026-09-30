@@ -21,20 +21,36 @@ public class JobsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/jobs — List all jobs, optionally filter by status.
+    /// GET /api/jobs — List jobs, optionally filtered by status with optional pagination.
+    /// Returns pagination headers: X-Total-Count, X-Page, X-Page-Size, X-Total-Pages.
     /// </summary>
     [HttpGet]
-    public IActionResult GetAll([FromQuery] string? status)
+    public IActionResult GetAll([FromQuery] string? status, [FromQuery] int? page = null, [FromQuery] int? pageSize = null)
     {
         PrintJobStatus? filter = null;
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<PrintJobStatus>(status, true, out var s))
             filter = s;
 
         var deviceId = User.FindFirst("deviceId")?.Value;
-        var jobs = _queueManager.GetAllJobs(filter)
+        var query = _queueManager.GetAllJobs(filter)
             .Where(job => string.Equals(job.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        return Ok(ApiResponse<List<PrintJob>>.Ok(jobs));
+
+        var totalCount = query.Count;
+        Response.Headers["X-Total-Count"] = totalCount.ToString();
+
+        if (page.HasValue && pageSize.HasValue && pageSize.Value > 0 && page.Value > 0)
+        {
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize.Value);
+            Response.Headers["X-Page"] = page.Value.ToString();
+            Response.Headers["X-Page-Size"] = pageSize.Value.ToString();
+            Response.Headers["X-Total-Pages"] = totalPages.ToString();
+
+            var paged = query.Skip((page.Value - 1) * pageSize.Value).Take(pageSize.Value).ToList();
+            return Ok(ApiResponse<List<PrintJob>>.Ok(paged));
+        }
+
+        return Ok(ApiResponse<List<PrintJob>>.Ok(query));
     }
 
     /// <summary>

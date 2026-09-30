@@ -129,6 +129,30 @@ fun SettingsScreen() {
                 )
             }
 
+            // ── Security & Privacy ──────────────────────────────────
+            var biometricLock by remember { mutableStateOf(false) }
+            var verifyServerCert by remember { mutableStateOf(true) }
+
+            SettingsGroup(title = "Security & Privacy", icon = Icons.Filled.Security, color = Green400) {
+                SettingsToggleItem(
+                    icon = Icons.Filled.Fingerprint,
+                    title = "Biometric Lock",
+                    subtitle = "Require fingerprint or PIN to access print actions",
+                    checked = biometricLock,
+                    onCheckedChange = { biometricLock = it },
+                    iconTint = Green400
+                )
+                Divider(modifier = Modifier.padding(start = 52.dp), color = DividerColor)
+                SettingsToggleItem(
+                    icon = Icons.Filled.VerifiedUser,
+                    title = "Strict Server Verification",
+                    subtitle = "Verify server pairing tokens on every request",
+                    checked = verifyServerCert,
+                    onCheckedChange = { verifyServerCert = it },
+                    iconTint = Green400
+                )
+            }
+
             // ── About ───────────────────────────────────────────────
             Card(
                 shape = RoundedCornerShape(16.dp),

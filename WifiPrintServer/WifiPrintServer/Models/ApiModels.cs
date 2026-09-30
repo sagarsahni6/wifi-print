@@ -22,6 +22,25 @@ public class ApiResponse<T>
         Success = false,
         Error = error
     };
+
+    public static ApiResponse<T> Fail(string error, T data) => new()
+    {
+        Success = false,
+        Error = error,
+        Data = data
+    };
+}
+
+/// <summary>
+/// Result of PDF inspection and password validation.
+/// </summary>
+public class PdfValidationResult
+{
+    public bool IsValid { get; set; }
+    public int PageCount { get; set; }
+    public bool IsEncrypted { get; set; }
+    public bool RequiresPassword { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>
@@ -80,4 +99,7 @@ public class ServerStatusResponse
     public bool PrinterAvailable { get; set; }
     public int PrinterCount { get; set; }
     public string Readiness { get; set; } = "Ready";
+    public bool IsSameNetwork { get; set; } = true;
+    public bool RequiresQrCode { get; set; } = false;
+    public bool RequiresPin { get; set; } = false;
 }

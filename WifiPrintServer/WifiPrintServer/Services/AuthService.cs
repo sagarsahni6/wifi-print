@@ -119,6 +119,36 @@ public class AuthService
         }
     }
 
+    /// <summary>
+    /// Automatically approves and pairs a device that is on the same local Wi-Fi subnet.
+    /// Eliminates manual confirmation prompts for trusted local devices.
+    /// </summary>
+    public AuthResponse AutoApproveLocalDevice(string deviceName, string deviceModel, string ipAddress)
+    {
+        var device = new DeviceInfo
+        {
+            Name = deviceName,
+            Model = deviceModel,
+            IpAddress = ipAddress
+        };
+
+        var token = GenerateJwtToken(device.Id, device.Name);
+        device.Token = token;
+        _pairedDevices[device.Id] = device;
+        SavePairedDevices();
+
+        _logger.LogInformation("Auto-approved local device: {Name} ({Id}) at {Ip}", device.Name, device.Id, ipAddress);
+        OnDevicePaired?.Invoke(device);
+
+        return new AuthResponse
+        {
+            Token = token,
+            DeviceId = device.Id,
+            ServerName = _settings.ServerName,
+            ExpiresAt = DateTime.UtcNow.AddDays(_settings.JwtExpirationDays)
+        };
+    }
+
     /// <summary>PC user clicked "Allow" — resolves the waiting request.</summary>
     public void ApproveDevice(string approvalId)
     {
@@ -262,13 +292,29 @@ public class AuthService
         return _pairedDevices.TryGetValue(deviceId, out var device) && device.IsBlocked;
     }
 
+    /// <summary>
+    /// Updates the device's last-seen timestamp, but only writes to DB if it's been
+    /// more than 5 minutes since the last update. This avoids excessive DB writes
+    /// since this is called on every authenticated API request.
+    /// </summary>
     public void MarkDeviceSeen(string deviceId)
     {
         if (!_pairedDevices.TryGetValue(deviceId, out var device))
             return;
 
+        // Throttle: only write to DB if last seen is more than 5 minutes ago
+        if ((DateTime.UtcNow - device.LastSeenAt).TotalMinutes < 5)
+            return;
+
         device.LastSeenAt = DateTime.UtcNow;
-        SavePairedDevices();
+        try
+        {
+            _stateStore.UpsertDevice(device);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist device last-seen for {Id}", deviceId);
+        }
     }
 
     private void LoadPairedDevices()

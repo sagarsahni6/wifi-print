@@ -18,7 +18,10 @@ data class ServerInfo(
     val lastConnected: Long = System.currentTimeMillis(),
     val lastAuthCheckAt: Long? = null,
     val connectionHealth: String = "Unknown"
-)
+) {
+    @androidx.room.Ignore
+    var isSameNetwork: Boolean = true
+}
 
 /**
  * Represents a printer connected to the server with full capabilities and health info.
@@ -74,7 +77,10 @@ data class PrintSettings(
     val duplex: Boolean = false,
     val quality: String = "Normal",
     val pageRange: String? = null,  // e.g., "1-5", "1,3,5-8"
-    val selectedPrinterId: String? = null
+    val selectedPrinterId: String? = null,
+    val collate: Boolean = true,
+    val watermarkText: String? = null,
+    val pdfPassword: String? = null
 )
 
 /**
@@ -92,7 +98,10 @@ data class ApiResponse<T>(
  */
 data class ConnectionRequest(
     val deviceName: String,
-    val deviceModel: String? = android.os.Build.MODEL
+    val deviceModel: String? = android.os.Build.MODEL,
+    val qrToken: String? = null,
+    val pin: String? = null,
+    val isSameNetwork: Boolean = true
 )
 
 /**
@@ -166,8 +175,11 @@ data class ServerPrintJob(
  * Page count response from the server.
  */
 data class PageCountResponse(
-    val pageCount: Int,
-    val fileType: String
+    val pageCount: Int = 1,
+    val fileType: String = "PDF",
+    val isLocked: Boolean = false,
+    val requiresPassword: Boolean = false,
+    val isPasswordVerified: Boolean = false
 )
 
 data class ServerStatusResponse(
@@ -178,7 +190,10 @@ data class ServerStatusResponse(
     val requiresPairing: Boolean,
     val printerAvailable: Boolean,
     val printerCount: Int,
-    val readiness: String
+    val readiness: String,
+    val isSameNetwork: Boolean = true,
+    val requiresQrCode: Boolean = false,
+    val requiresPin: Boolean = false
 )
 
 /**

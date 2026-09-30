@@ -27,11 +27,11 @@ public partial class Program
     public static X509Certificate2? ServerCertificate { get; private set; }
 
     /// <summary>
-    /// Initializes application settings asynchronously.
+    /// Initializes application settings.
     /// </summary>
-    public static async Task InitializeAsync()
+    public static void Initialize()
     {
-        Settings = await AppSettings.LoadOrCreateAsync();
+        Settings = AppSettings.LoadOrCreate();
     }
 
     /// <summary>
@@ -86,6 +86,17 @@ public partial class Program
                     System.Text.Json.JsonNamingPolicy.CamelCase;
             });
         builder.Services.AddSignalR();
+
+        // Enable CORS for web apps and admin dashboard
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyHeader()
+                      .AllowAnyMethod();
+            });
+        });
 
         // JWT authentication
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -146,6 +157,7 @@ public partial class Program
         stateStore.ExpirePendingApprovals();
 
         // Middleware pipeline
+        WebApp.UseCors();
         WebApp.UseAuthentication();
         WebApp.UseAuthorization();
         WebApp.MapControllers();

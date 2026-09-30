@@ -97,6 +97,16 @@ fun HomeScreen(
         }
     }
 
+    // Auto-connect to server discovered on the same local Wi-Fi network
+    LaunchedEffect(discoveredServers, state.isConnected) {
+        if (!state.isConnected && !connectState.isConnecting && !connectState.isConnected) {
+            val sameNetworkServer = discoveredServers.firstOrNull { it.isSameNetwork }
+            if (sameNetworkServer != null) {
+                connectViewModel.connectToServer(sameNetworkServer)
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose { discoveryViewModel.stopDiscovery() }
     }

@@ -5,8 +5,8 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
 
     <AssemblyName>WifiPrintServer</AssemblyName>
     <RootNamespace>WifiPrintServer</RootNamespace>
@@ -19,6 +19,7 @@
     <!-- ASP.NET Core (Kestrel web server) -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Docnet.Core" Version="2.6.0" />
+    <PackageReference Include="itext7.bouncy-castle-adapter" Version="8.0.2" />
     
     <!-- JWT Authentication -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
@@ -33,11 +34,10 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
     
-    <!-- JSON serialization -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- JSON serialization (using built-in System.Text.Json) -->
     
-    <!-- System tray support -->
-    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <!-- System tray support (using System.Windows.Forms.NotifyIcon) -->
+    
     
     <!-- Logging -->
     <PackageReference Include="Serilog" Version="3.1.1" />

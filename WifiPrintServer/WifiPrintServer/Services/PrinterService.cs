@@ -20,6 +20,12 @@ public class PrinterService
     private readonly ILogger<PrinterService> _logger;
     private readonly AppSettings _settings;
 
+    // Printer cache to avoid expensive WMI/PrintServer enumeration on every call
+    private List<PrinterInfo>? _cachedPrinters;
+    private DateTime _cacheExpiry = DateTime.MinValue;
+    private readonly object _cacheLock = new();
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
+
     public PrinterService(ILogger<PrinterService> logger, AppSettings settings)
     {
         _logger = logger;
@@ -28,6 +34,12 @@ public class PrinterService
 
     public List<PrinterInfo> GetAllPrinters()
     {
+        lock (_cacheLock)
+        {
+            if (_cachedPrinters != null && DateTime.UtcNow < _cacheExpiry)
+                return _cachedPrinters;
+        }
+
         var printers = new List<PrinterInfo>();
         try
         {
@@ -71,7 +83,26 @@ public class PrinterService
             }
         }
         catch (Exception ex) { _logger.LogError(ex, "Failed to enumerate printers"); }
+
+        lock (_cacheLock)
+        {
+            _cachedPrinters = printers;
+            _cacheExpiry = DateTime.UtcNow.Add(CacheTtl);
+        }
+
         return printers;
+    }
+
+    /// <summary>
+    /// Invalidates the printer cache so the next call re-enumerates.
+    /// </summary>
+    public void InvalidatePrinterCache()
+    {
+        lock (_cacheLock)
+        {
+            _cachedPrinters = null;
+            _cacheExpiry = DateTime.MinValue;
+        }
     }
 
     public PrinterInfo? GetPrinter(string printerId) =>
@@ -86,11 +117,12 @@ public class PrinterService
     /// <summary>
     /// Set a printer as the default for WiFi Print jobs.
     /// </summary>
-    public async Task SetDefaultPrinterAsync(string printerName)
+    public Task SetDefaultPrinterAsync(string printerName)
     {
         _settings.DefaultPrinter = printerName;
-        await _settings.SaveAsync();
+        _settings.Save();
         _logger.LogInformation("Default printer set to: {Printer}", printerName);
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -145,15 +177,21 @@ public class PrinterService
     {
         ct.ThrowIfCancellationRequested();
         progressCallback?.Invoke(20);
-        using var image = Image.FromFile(filePath);
 
-        var printDoc = CreatePrintDocument(printerName, filePath, settings);
+        // Load image bytes into memory so the file handle is released before printing.
+        // The Bitmap is kept alive until after Print() completes to avoid ObjectDisposedException
+        // on printer drivers that spool asynchronously.
+        byte[] imageBytes = File.ReadAllBytes(filePath);
+        using var ms = new MemoryStream(imageBytes);
+        using var image = Image.FromStream(ms);
+
+        using var printDoc = CreatePrintDocument(printerName, filePath, settings);
         progressCallback?.Invoke(40);
 
         printDoc.PrintPage += (_, e) =>
         {
             if (e.Graphics == null) return;
-            DrawImageFit(e.Graphics, image, e.PageBounds);
+            DrawImageFit(e.Graphics, image, e.PageBounds, settings.WatermarkText);
             e.HasMorePages = false;
         };
 
@@ -173,8 +211,19 @@ public class PrinterService
         ct.ThrowIfCancellationRequested();
         progressCallback?.Invoke(20);
 
-        // Render PDF pages to bitmaps using PDFium
-        var pageImages = RenderPdfPages(filePath, settings, ct);
+        // Render PDF pages to bitmaps using PDFium.
+        // Wrap in try so bitmaps are disposed even if cancellation fires mid-render.
+        List<Bitmap> pageImages = new();
+        try
+        {
+            pageImages = RenderPdfPages(filePath, settings, ct);
+        }
+        catch
+        {
+            foreach (var img in pageImages) img.Dispose();
+            throw;
+        }
+
         if (pageImages.Count == 0)
         {
             _logger.LogWarning("No pages rendered from PDF");
@@ -186,14 +235,14 @@ public class PrinterService
 
         try
         {
-            var printDoc = CreatePrintDocument(printerName, filePath, settings);
+            using var printDoc = CreatePrintDocument(printerName, filePath, settings);
             int currentPage = 0;
             int totalPages = pageImages.Count;
 
             printDoc.PrintPage += (_, e) =>
             {
                 if (e.Graphics == null) return;
-                DrawImageFit(e.Graphics, pageImages[currentPage], e.PageBounds);
+                DrawImageFit(e.Graphics, pageImages[currentPage], e.PageBounds, settings.WatermarkText);
                 currentPage++;
                 e.HasMorePages = currentPage < totalPages;
                 progressCallback?.Invoke(40 + (int)(55.0 * currentPage / totalPages));
@@ -211,22 +260,61 @@ public class PrinterService
     }
 
     /// <summary>
-    /// Gets the page count of a PDF file without rendering.
+    /// Validates a PDF file, checking if it is password protected / locked and whether the provided password unlocks it.
     /// </summary>
-    public int GetPdfPageCount(string filePath)
+    public PdfValidationResult ValidatePdf(string filePath, string? password = null)
     {
         try
         {
-            using var docReader = DocLib.Instance.GetDocReader(
-                filePath,
-                new PageDimensions(100, 100)); // minimal dimensions for counting
-            return docReader.GetPageCount();
+            using var docReader = string.IsNullOrEmpty(password)
+                ? DocLib.Instance.GetDocReader(filePath, new PageDimensions(100, 100))
+                : DocLib.Instance.GetDocReader(filePath, password, new PageDimensions(100, 100));
+
+            int count = docReader.GetPageCount();
+            return new PdfValidationResult
+            {
+                IsValid = true,
+                PageCount = count,
+                IsEncrypted = !string.IsNullOrEmpty(password),
+                RequiresPassword = false
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to get page count for {File}", filePath);
-            return 0;
+            string msg = ex.Message;
+            bool isPasswordIssue = msg.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                                  ex.GetType().Name.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+                                  msg.Contains("code 3", StringComparison.OrdinalIgnoreCase) ||
+                                  msg.Contains("code 4", StringComparison.OrdinalIgnoreCase);
+
+            if (isPasswordIssue)
+            {
+                return new PdfValidationResult
+                {
+                    IsValid = false,
+                    IsEncrypted = true,
+                    RequiresPassword = true,
+                    ErrorMessage = string.IsNullOrEmpty(password)
+                        ? "This PDF is password-protected. Please enter the password to unlock and print."
+                        : "Incorrect PDF password. Please verify the password and try again."
+                };
+            }
+
+            _logger.LogWarning(ex, "PDF validation failed for {File}", filePath);
+            return new PdfValidationResult
+            {
+                IsValid = false,
+                ErrorMessage = $"PDF error: {ex.Message}"
+            };
         }
+    }
+
+    /// <summary>
+    /// Gets the page count of a PDF file without rendering, supporting password-protected documents.
+    /// </summary>
+    public int GetPdfPageCount(string filePath, string? password = null)
+    {
+        return ValidatePdf(filePath, password).PageCount;
     }
 
     /// <summary>
@@ -265,6 +353,7 @@ public class PrinterService
 
     /// <summary>
     /// Renders each PDF page to a high-resolution Bitmap using PDFium via Docnet.Core.
+    /// Automatically applies user-provided password if the PDF is password-protected.
     /// </summary>
     private List<Bitmap> RenderPdfPages(string filePath, PrintSettings settings, CancellationToken ct)
     {
@@ -275,9 +364,9 @@ public class PrinterService
         int renderWidth = 2480;
         int renderHeight = 3508;
 
-        using var docReader = DocLib.Instance.GetDocReader(
-            filePath,
-            new PageDimensions(renderWidth, renderHeight));
+        using var docReader = string.IsNullOrEmpty(settings.PdfPassword)
+            ? DocLib.Instance.GetDocReader(filePath, new PageDimensions(renderWidth, renderHeight))
+            : DocLib.Instance.GetDocReader(filePath, settings.PdfPassword, new PageDimensions(renderWidth, renderHeight));
 
         int pageCount = docReader.GetPageCount();
 
@@ -347,7 +436,7 @@ public class PrinterService
         progressCallback?.Invoke(20);
         var lines = File.ReadAllLines(filePath);
 
-        var printDoc = CreatePrintDocument(printerName, filePath, settings);
+        using var printDoc = CreatePrintDocument(printerName, filePath, settings);
         progressCallback?.Invoke(40);
 
         int lineIndex = 0;
@@ -365,6 +454,8 @@ public class PrinterService
                 y += lineHeight;
                 lineIndex++;
             }
+            if (!string.IsNullOrWhiteSpace(settings.WatermarkText))
+                DrawWatermark(e.Graphics, e.MarginBounds, settings.WatermarkText);
             e.HasMorePages = lineIndex < lines.Length;
         };
 
@@ -410,14 +501,16 @@ public class PrinterService
             _logger.LogWarning(ex, "Failed to set margins for {Printer}", printerName);
         }
 
-        // Apply copies — safe on all printers
+        // Apply copies & collation
         try
         {
             printDoc.PrinterSettings.Copies = (short)Math.Max(1, settings.Copies);
+            if (settings.Copies > 1)
+                printDoc.PrinterSettings.Collate = settings.Collate;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to set copies for {Printer}", printerName);
+            _logger.LogWarning(ex, "Failed to set copies/collation for {Printer}", printerName);
         }
 
         // Apply orientation — some drivers reject this on DefaultPageSettings
@@ -452,11 +545,34 @@ public class PrinterService
     /// This is the simplest and most reliable approach — the PDF is already
     /// rendered at the correct aspect ratio, so stretching to fill looks correct.
     /// </summary>
-    private static void DrawImageFit(Graphics g, Image image, Rectangle bounds)
+    private static void DrawImageFit(Graphics g, Image image, Rectangle bounds, string? watermarkText = null)
     {
         g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
         // Draw the image to fill the entire bounds (full page)
         g.DrawImage(image, bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+
+        if (!string.IsNullOrWhiteSpace(watermarkText))
+        {
+            DrawWatermark(g, bounds, watermarkText);
+        }
+    }
+
+    private static void DrawWatermark(Graphics g, Rectangle bounds, string text)
+    {
+        using var font = new Font("Arial", 44, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var brush = new SolidBrush(Color.FromArgb(40, 128, 128, 128));
+        var state = g.Save();
+        try
+        {
+            g.TranslateTransform(bounds.Left + bounds.Width / 2f, bounds.Top + bounds.Height / 2f);
+            g.RotateTransform(-35f);
+            var size = g.MeasureString(text, font);
+            g.DrawString(text, font, brush, -size.Width / 2f, -size.Height / 2f);
+        }
+        finally
+        {
+            g.Restore(state);
+        }
     }
 
     private static PrinterStatus MapQueueStatus(PrintQueue queue)

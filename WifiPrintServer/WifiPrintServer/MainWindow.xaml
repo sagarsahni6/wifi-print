@@ -4,12 +4,15 @@
         Title="WiFi Print Server" Height="750" Width="1100"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}"
-        MinWidth="900" MinHeight="600"
-        FontFamily="Segoe UI">
+        MinWidth="960" MinHeight="640"
+        FontFamily="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver">
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="240"/>
+            <ColumnDefinition Width="230"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -17,8 +20,8 @@
         <Border Grid.Column="0" Background="{StaticResource BgSidebarBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel>
-                <!-- Gradient accent bar at top -->
-                <Border DockPanel.Dock="Top" Height="4" CornerRadius="0,0,0,0">
+                <!-- Top Accent Line -->
+                <Border DockPanel.Dock="Top" Height="3">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                             <GradientStop Color="#4F46E5" Offset="0"/>
@@ -27,43 +30,47 @@
                     </Border.Background>
                 </Border>
 
-                <!-- Logo at top -->
-                <StackPanel DockPanel.Dock="Top" Margin="24,24,24,32">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="🖨️" FontSize="26" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                        <StackPanel>
-                            <TextBlock Text="WiFi Print" FontSize="20" FontWeight="Bold"
-                                       Foreground="{StaticResource PrimaryBrush}"/>
-                            <TextBlock Text="Server Dashboard" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,-2,0,0"/>
+                <!-- App Brand / Logo -->
+                <StackPanel DockPanel.Dock="Top" Margin="20,22,20,24">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="38" Height="38" CornerRadius="10" Margin="0,0,12,0"
+                                Background="{StaticResource PrimaryLightBrush}">
+                            <TextBlock Text="🖨️" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="WiFi Print" FontSize="18" FontWeight="Bold"
+                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Server Dashboard" FontSize="11" FontWeight="Medium"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,1,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Version footer -->
-                <TextBlock DockPanel.Dock="Bottom" Text="v2.0.0" FontSize="10"
+                <!-- Version Footer -->
+                <TextBlock DockPanel.Dock="Bottom" Text="v2.0.0" FontSize="10" FontWeight="Medium"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            HorizontalAlignment="Center" Margin="0,0,0,12" Opacity="0.6"/>
 
-                <!-- Server Status at bottom -->
-                <Border DockPanel.Dock="Bottom" Margin="16,0,16,16"
-                        Background="{StaticResource BgInputBrush}" CornerRadius="14" Padding="16">
+                <!-- Server Status Widget at Bottom -->
+                <Border DockPanel.Dock="Bottom" Margin="14,0,14,14"
+                        Background="{StaticResource BgInputBrush}" CornerRadius="12" Padding="14,12"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Ellipse Width="10" Height="10" Fill="#66BB6A" Margin="0,0,8,0"
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="#16A34A" Margin="0,0,7,0"
                                      x:Name="StatusDot"/>
                             <TextBlock x:Name="StatusText" Text="Online"
-                                       Foreground="#66BB6A" FontWeight="SemiBold" FontSize="12"/>
+                                       Foreground="#15803D" FontWeight="SemiBold" FontSize="11.5"/>
                         </StackPanel>
                         <TextBlock x:Name="IpText" Text="IP: Loading..."
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,2"/>
                         <TextBlock x:Name="PortText" Text="Port: 5000"
                                    Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Nav Items -->
-                <StackPanel Margin="8,0">
+                <!-- Navigation Tabs -->
+                <StackPanel Margin="6,0">
                     <RadioButton x:Name="NavDashboard" Content="📊  Dashboard"
                                  Style="{StaticResource NavItem}"
                                  IsChecked="True" Checked="Nav_Checked" Tag="Dashboard"/>
@@ -87,175 +94,294 @@
         </Border>
 
         <!-- ══════════════════ Main Content ══════════════════ -->
-        <Grid Grid.Column="1" Margin="28,24,28,20">
+        <Grid Grid.Column="1" Margin="24,20,24,20">
 
             <!-- ── Dashboard Page ── -->
             <Grid x:Name="DashboardPage" Visibility="Visible">
-<Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Pending Approval Alert (Dynamic) -->
+                    <RowDefinition Height="Auto"/> <!-- Header -->
+                    <RowDefinition Height="Auto"/> <!-- Stats -->
+                    <RowDefinition Height="*"/>    <!-- Main Split: QR Connect (Left) + Recent Jobs (Right) -->
                 </Grid.RowDefinitions>
 
-                <!-- Header -->
-                <StackPanel Grid.Row="0" Margin="0,0,0,24">
-                    <TextBlock Text="Dashboard" FontSize="28" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Server overview and quick actions"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,4,0,0"/>
-                </StackPanel>
+                <!-- ── Pending Device Approval Alert Banner (High Priority) ── -->
+                <Border Grid.Row="0" x:Name="ApprovalBanner" Background="#FFFBEB" BorderBrush="#FCD34D"
+                        BorderThickness="1.5" CornerRadius="12" Padding="16,12" Margin="0,0,0,16"
+                        Visibility="Collapsed">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" BlurRadius="10" Color="#D97706" Opacity="0.15" Direction="270"/>
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <!-- Device Icon -->
+                        <Border Grid.Column="0" Width="38" Height="38" CornerRadius="8" Background="#FEF3C7"
+                                Margin="0,0,12,0" VerticalAlignment="Center">
+                            <TextBlock Text="📲" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <!-- Details -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Connection Request Received" FontSize="13" FontWeight="Bold"
+                                       Foreground="#92400E"/>
+                            <TextBlock x:Name="ApprovalDeviceName" Text="" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="#78350F" Margin="0,1,0,0"/>
+                            <TextBlock x:Name="ApprovalDeviceIp" Text="" FontSize="11"
+                                       Foreground="#B45309"/>
+                        </StackPanel>
+                        <!-- Action Buttons -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="✓ Allow" Click="ApproveDevice_Click"
+                                    Background="#16A34A" Foreground="White" FontWeight="SemiBold" FontSize="12.5"
+                                    Padding="18,8" Margin="0,0,8,0" BorderThickness="0" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="8"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button Content="✗ Deny" Click="DenyDevice_Click"
+                                    Background="#EF4444" Foreground="White" FontWeight="SemiBold" FontSize="12.5"
+                                    Padding="18,8" BorderThickness="0" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="8"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-                <!-- Stats Cards -->
-                <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,20">
-                    <Border Style="{StaticResource StatCard}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="⚡" FontSize="16" Margin="0,0,6,0"/>
-                                <TextBlock Text="Active Jobs" Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="12" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock x:Name="ActiveJobsCount" Text="0" FontSize="36" FontWeight="Bold"
-                                       Foreground="{StaticResource TertiaryBrush}"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource StatCard}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="✅" FontSize="16" Margin="0,0,6,0"/>
-                                <TextBlock Text="Completed" Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="12" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock x:Name="CompletedCount" Text="0" FontSize="36" FontWeight="Bold"
-                                       Foreground="{StaticResource SuccessBrush}"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource StatCard}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="🖨️" FontSize="16" Margin="0,0,6,0"/>
-                                <TextBlock Text="Printers" Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="12" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock x:Name="PrinterCount" Text="0" FontSize="36" FontWeight="Bold"
-                                       Foreground="{StaticResource PrimaryBrush}"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource StatCard}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="📱" FontSize="16" Margin="0,0,6,0"/>
-                                <TextBlock Text="Paired Devices" Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="12" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock x:Name="DeviceCount" Text="0" FontSize="36" FontWeight="Bold"
-                                       Foreground="{StaticResource WarningBrush}"/>
-                        </StackPanel>
-                    </Border>
-                </UniformGrid>
-
-                <!-- Pairing + QR Code + Recent Jobs -->
-                <Grid Grid.Row="2">
+                <!-- ── Dashboard Header ── -->
+                <Grid Grid.Row="1" Margin="0,0,0,18">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Dashboard" FontSize="26" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Server overview, instant mobile pairing, and print queue"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="12.5" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="📋 Copy Address" Style="{StaticResource OutlinedButton}"
+                                Click="CopyUrl_Click" Padding="12,6" FontSize="11.5" Margin="0,0,8,0"/>
+                        <Button Content="📱 Get Android App" Style="{StaticResource OutlinedButton}"
+                                Click="DownloadApp_Click" Padding="12,6" FontSize="11.5"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ── Stats Cards (Row of 4) ── -->
+                <UniformGrid Grid.Row="2" Columns="4" Margin="0,0,0,18">
+                    <!-- Active Jobs -->
+                    <Border Style="{StaticResource StatCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Active Jobs" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5" FontWeight="Medium" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="ActiveJobsCount" Text="0" FontSize="28" FontWeight="Bold"
+                                           Foreground="{StaticResource PrimaryBrush}"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="10"
+                                    Background="#EEF2FF" VerticalAlignment="Center">
+                                <TextBlock Text="⚡" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <!-- Completed Jobs -->
+                    <Border Style="{StaticResource StatCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Completed" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5" FontWeight="Medium" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="CompletedCount" Text="0" FontSize="28" FontWeight="Bold"
+                                           Foreground="#16A34A"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="10"
+                                    Background="#DCFCE7" VerticalAlignment="Center">
+                                <TextBlock Text="✓" FontSize="18" FontWeight="Bold" Foreground="#16A34A"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <!-- Printers -->
+                    <Border Style="{StaticResource StatCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Printers" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5" FontWeight="Medium" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="PrinterCount" Text="0" FontSize="28" FontWeight="Bold"
+                                           Foreground="#0284C7"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="10"
+                                    Background="#E0F2FE" VerticalAlignment="Center">
+                                <TextBlock Text="🖨️" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <!-- Paired Devices -->
+                    <Border Style="{StaticResource StatCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Paired Devices" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5" FontWeight="Medium" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="DeviceCount" Text="0" FontSize="28" FontWeight="Bold"
+                                           Foreground="#7C3AED"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Width="40" Height="40" CornerRadius="10"
+                                    Background="#F5F3FF" VerticalAlignment="Center">
+                                <TextBlock Text="📱" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </UniformGrid>
+
+                <!-- ── Main 2-Column Split: Connect (Left) & Recent Jobs (Right) ── -->
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="310"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Device Approval Card -->
-                    <Border Grid.Column="0" Style="{StaticResource CardBorder}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                <TextBlock Text="📱" FontSize="20" Margin="0,0,10,0"/>
-                                <TextBlock Text="Device Connections" FontSize="17" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                            </StackPanel>
-                            <TextBlock Text="When a phone requests to connect, approve it here."
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
-                                       TextWrapping="Wrap" Margin="0,0,0,20"/>
+                    <!-- ── Column 0: Quick Connect Card ── -->
+                    <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,14,0" Padding="18">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel HorizontalAlignment="Center">
+                                <!-- Card Header -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10" HorizontalAlignment="Center">
+                                    <Border Width="28" Height="28" CornerRadius="7" Background="{StaticResource PrimaryLightBrush}"
+                                            Margin="0,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="📱" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Scan to Connect" FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
 
-                            <!-- Approval Notification (hidden by default) -->
-                            <Border x:Name="ApprovalBanner" Background="#FFF3E0" CornerRadius="12"
-                                    Padding="20,16" Margin="0,0,0,12" Visibility="Collapsed">
-                                <StackPanel>
-                                    <TextBlock Text="📲 Connection Request" FontSize="15" FontWeight="SemiBold"
-                                               Foreground="#E65100" Margin="0,0,0,8"/>
-                                    <TextBlock x:Name="ApprovalDeviceName" Text="" FontSize="14"
-                                               Foreground="#BF360C" FontWeight="Medium" Margin="0,0,0,4"/>
-                                    <TextBlock x:Name="ApprovalDeviceIp" Text="" FontSize="12"
-                                               Foreground="#E65100" Margin="0,0,0,16"/>
+                                <TextBlock Text="Scan with WiFi Print Android app"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                           TextAlignment="Center" Margin="0,0,0,10"/>
+
+                                <!-- QR Code Box -->
+                                <Border Background="White" CornerRadius="10" Padding="8"
+                                        HorizontalAlignment="Center" BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1">
+                                    <Image x:Name="QrCodeImage" Width="150" Height="150"
+                                           RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                </Border>
+
+                                <!-- Server Address Pill -->
+                                <Border Background="{StaticResource BgInputBrush}" CornerRadius="8" Padding="10,5"
+                                        Margin="0,8,0,0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                        HorizontalAlignment="Stretch">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="QrInfoText" Text="" FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="📋" ToolTip="Copy server address"
+                                                Width="22" Height="22" Padding="0" Click="CopyUrl_Click"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                FontSize="11"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Pairing PIN Card (for devices on other networks) -->
+                                <Border Background="#FAF5FF" BorderBrush="#E9D5FF" BorderThickness="1" CornerRadius="10"
+                                        Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="PAIRING PIN (OTHER NETWORKS)" FontSize="9" FontWeight="Bold"
+                                                   Foreground="#7C3AED" HorizontalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                            <TextBlock x:Name="PinDisplay" Text="------" FontSize="20" FontWeight="Bold"
+                                                       FontFamily="Consolas, monospace" Foreground="#581C87"
+                                                       VerticalAlignment="Center"/>
+                                            <Button x:Name="RefreshPinButton" Content="🔄" ToolTip="Refresh PIN"
+                                                    Width="22" Height="22" Margin="6,0,0,0" Padding="0"
+                                                    Click="RefreshPin_Click" Cursor="Hand"
+                                                    Background="Transparent" BorderBrush="#E9D5FF" BorderThickness="1"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="PinTimerText" Text="Fixed QR · PIN refreshes periodically"
+                                                   FontSize="8.5" Foreground="#9333EA" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Connection Status & Idle Indicator -->
+                                <Border x:Name="ApprovalIdle" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1"
+                                        CornerRadius="8" Padding="8,5" Margin="0,8,0,0" HorizontalAlignment="Stretch">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Button Content="✓ Allow" Style="{StaticResource ModernButton}"
-                                                Click="ApproveDevice_Click" Padding="24,10" Margin="0,0,12,0"
-                                                Background="#43A047"/>
-                                        <Button Content="✗ Deny" Padding="24,10"
-                                                Click="DenyDevice_Click"
-                                                Background="#EF5350" Foreground="White" FontWeight="SemiBold"
-                                                BorderThickness="0" Cursor="Hand">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}"
-                                                            CornerRadius="8" Padding="{TemplateBinding Padding}">
-                                                        <ContentPresenter HorizontalAlignment="Center"
-                                                                          VerticalAlignment="Center"/>
-                                                    </Border>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
+                                        <Ellipse Width="6" Height="6" Fill="#16A34A" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Ready for connections · Auto-connects on Wi-Fi" FontSize="9.5"
+                                                   FontWeight="Medium" Foreground="#15803D" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- ── Column 1: Recent Print Jobs Card ── -->
+                    <Border Grid.Column="1" Style="{StaticResource CardBorder}" Padding="18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Header -->
+                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Width="28" Height="28" CornerRadius="7" Background="#EEF2FF"
+                                            Margin="0,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="📋" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Recent Jobs" FontSize="15" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="Live documents processed by this server" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
                                     </StackPanel>
                                 </StackPanel>
-                            </Border>
+                                <Button Grid.Column="1" Content="🔄 Refresh" Style="{StaticResource OutlinedButton}"
+                                        Padding="10,5" FontSize="11" Click="RefreshJobs_Click"/>
+                            </Grid>
 
-                            <!-- Idle state -->
-                            <Border x:Name="ApprovalIdle" Background="{StaticResource BgInputBrush}"
-                                    CornerRadius="12" Padding="20,24" HorizontalAlignment="Stretch">
-                                <StackPanel HorizontalAlignment="Center">
-                                    <TextBlock Text="✓" FontSize="32" HorizontalAlignment="Center"
-                                               Foreground="#66BB6A" Margin="0,0,0,8"/>
-                                    <TextBlock Text="Waiting for connection requests..."
-                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
-                                               HorizontalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- QR Code Connection Card -->
-                    <Border Grid.Column="1" Style="{StaticResource CardBorder}" Width="260">
-                        <StackPanel HorizontalAlignment="Center">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12" HorizontalAlignment="Center">
-                                <TextBlock Text="📷" FontSize="20" Margin="0,0,10,0"/>
-                                <TextBlock Text="Scan to Connect" FontSize="17" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                            </StackPanel>
-                            <TextBlock Text="Open WiFi Print on your phone and scan this QR code"
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                                       TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,16"/>
-
-                            <!-- QR Code Image -->
-                            <Border Background="White" CornerRadius="12" Padding="12"
-                                    HorizontalAlignment="Center" BorderBrush="{StaticResource BorderBrush}"
-                                    BorderThickness="1">
-                                <Image x:Name="QrCodeImage" Width="180" Height="180"
-                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                            </Border>
-
-                            <TextBlock x:Name="QrInfoText" Text="" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextAlignment="Center" Margin="0,10,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Recent Jobs -->
-                    <Border Grid.Column="2" Style="{StaticResource CardBorder}">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                <TextBlock Text="📋" FontSize="20" Margin="0,0,10,0"/>
-                                <TextBlock Text="Recent Jobs" FontSize="17" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                            </StackPanel>
-                            <ListView x:Name="RecentJobsList" Background="Transparent"
-                                      BorderThickness="0" MaxHeight="300">
+                            <!-- List -->
+                            <ListView Grid.Row="1" x:Name="RecentJobsList" Background="Transparent"
+                                      BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="Padding" Value="0"/>
@@ -265,69 +391,55 @@
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="{StaticResource BgInputBrush}" CornerRadius="10"
-                                                Padding="12,10" Margin="0,3">
+                                                Padding="12,8" Margin="0,2" BorderBrush="{StaticResource BorderBrush}"
+                                                BorderThickness="0.5">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="📄" FontSize="14" Margin="0,0,10,0"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding OriginalFileName}"
-                                                           TextTrimming="CharacterEllipsis" FontSize="13"
-                                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                                           VerticalAlignment="Center"/>
-                                                <Border Grid.Column="2" CornerRadius="12" Padding="10,4" Margin="8,0,0,0"
-                                                        Background="{StaticResource PrimaryLightBrush}">
-                                                    <TextBlock Text="{Binding Status}" FontSize="11"
-                                                               Foreground="{StaticResource PrimaryBrush}"
-                                                               FontWeight="SemiBold"/>
+                                                <Border Grid.Column="0" Width="30" Height="30" CornerRadius="6"
+                                                        Background="#EEF2FF" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="📄" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding OriginalFileName}"
+                                                               TextTrimming="CharacterEllipsis" FontSize="12.5" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10.5"
+                                                               Margin="0,1,0,0">
+                                                        <Run Text="{Binding PrinterName}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Border Grid.Column="2" CornerRadius="8" Padding="8,3" Margin="8,0,0,0"
+                                                        Background="#DCFCE7" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Status}" FontSize="10.5"
+                                                               Foreground="#15803D" FontWeight="SemiBold"/>
                                                 </Border>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
-                        </StackPanel>
+
+                            <!-- Empty State -->
+                            <Border Grid.Row="1" x:Name="RecentJobsEmptyState" Background="{StaticResource BgInputBrush}"
+                                    CornerRadius="12" Padding="24" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="📄" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,8" Opacity="0.5"/>
+                                    <TextBlock Text="No recent print jobs yet" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Documents sent from your Android phone will appear here in real time."
+                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </Border>
                 </Grid>
-
-                <!-- Get the Android App - Cross Promotion Card -->
-                <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0,12,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Phone Icon -->
-                        <Border Grid.Column="0" Width="52" Height="52" CornerRadius="14"
-                                Background="{StaticResource PrimaryLightBrush}" Margin="0,0,18,0"
-                                VerticalAlignment="Center">
-                            <TextBlock Text="📱" FontSize="26" HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"/>
-                        </Border>
-
-                        <!-- Info Text -->
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="Get the Android App" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"/>
-                            <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}">
-                                Install WiFi Print on your Android phone to start printing wirelessly.
-                                Scan the QR code above or download from GitHub.
-                            </TextBlock>
-                        </StackPanel>
-
-                        <!-- Download Button -->
-                        <Button Grid.Column="2" Content="⬇ Download App"
-                                Style="{StaticResource ModernButton}"
-                                Click="DownloadApp_Click"
-                                Padding="20,10" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                    </Grid>
-                </Border>
             </Grid>
 
             <!-- ── Jobs Page ── -->
@@ -336,26 +448,51 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Print Queue" FontSize="28" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Manage all print jobs" FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Grid Grid.Row="0" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Print Queue" FontSize="26" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Manage active and completed print jobs" FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="🔄 Refresh" Style="{StaticResource OutlinedButton}"
+                                Click="RefreshJobs_Click" Padding="12,7" Margin="0,0,8,0" FontSize="11.5"/>
+                        <Button Content="🧹 Clear Completed" Style="{StaticResource OutlinedButton}"
+                                Click="ClearCompletedJobs_Click" Padding="12,7" FontSize="11.5"/>
+                    </StackPanel>
+                </Grid>
                 <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
-                    <ListView x:Name="JobsList" Background="Transparent"
-                              BorderThickness="0" Padding="8">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="ID" DisplayMemberBinding="{Binding Id}" Width="100"/>
-                                <GridViewColumn Header="File" DisplayMemberBinding="{Binding OriginalFileName}" Width="200"/>
-                                <GridViewColumn Header="Printer" DisplayMemberBinding="{Binding PrinterName}" Width="150"/>
-                                <GridViewColumn Header="Status" DisplayMemberBinding="{Binding Status}" Width="100"/>
-                                <GridViewColumn Header="Progress" DisplayMemberBinding="{Binding Progress}" Width="80"/>
-                                <GridViewColumn Header="Created" DisplayMemberBinding="{Binding CreatedAt}" Width="160"/>
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <Grid>
+                        <ListView x:Name="JobsList" Background="Transparent"
+                                  BorderThickness="0" Padding="8">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="ID" DisplayMemberBinding="{Binding Id}" Width="100"/>
+                                    <GridViewColumn Header="File" DisplayMemberBinding="{Binding OriginalFileName}" Width="220"/>
+                                    <GridViewColumn Header="Printer" DisplayMemberBinding="{Binding PrinterName}" Width="160"/>
+                                    <GridViewColumn Header="Status" DisplayMemberBinding="{Binding Status}" Width="100"/>
+                                    <GridViewColumn Header="Progress" DisplayMemberBinding="{Binding Progress}" Width="80"/>
+                                    <GridViewColumn Header="Created" DisplayMemberBinding="{Binding CreatedAt}" Width="160"/>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                        <Border x:Name="JobsEmptyState" Background="Transparent"
+                                Padding="40" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="📋" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" Opacity="0.5"/>
+                                <TextBlock Text="Print Queue is Empty" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Documents sent from your Android phone will appear here in real time."
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"
+                                           HorizontalAlignment="Center" TextAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </Border>
             </Grid>
 
@@ -365,12 +502,20 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Installed Printers" FontSize="28" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Printers available on this PC" FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Grid Grid.Row="0" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Installed Printers" FontSize="26" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Printers available on this PC" FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="🔄 Refresh Printers" Style="{StaticResource OutlinedButton}"
+                            Click="RefreshPrinters_Click" Padding="12,7" VerticalAlignment="Center" FontSize="11.5"/>
+                </Grid>
                 <ListView x:Name="PrintersList" Grid.Row="1" Background="Transparent"
                           BorderThickness="0">
                     <ListView.ItemContainerStyle>
@@ -382,7 +527,7 @@
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Border Background="{StaticResource BgCardBrush}" CornerRadius="12"
-                                    Padding="20" Margin="0,4" BorderBrush="{StaticResource BorderBrush}"
+                                    Padding="18,14" Margin="0,3" BorderBrush="{StaticResource BorderBrush}"
                                     BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -390,32 +535,36 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Width="44" Height="44" CornerRadius="10"
-                                            Background="{StaticResource PrimaryLightBrush}" Margin="0,0,16,0">
-                                        <TextBlock Text="🖨️" FontSize="20" HorizontalAlignment="Center"
+                                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                                            Background="{StaticResource PrimaryLightBrush}" Margin="0,0,14,0">
+                                        <TextBlock Text="🖨️" FontSize="18" HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"/>
                                     </Border>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"/>
-                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                                                   Margin="0,3,0,0">
+                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5"
+                                                   Margin="0,2,0,0">
                                             <Run Text="Driver: "/><Run Text="{Binding DriverName}"/>
                                         </TextBlock>
                                     </StackPanel>
-                                    <Border Grid.Column="2" CornerRadius="16" Padding="12,6"
-                                            VerticalAlignment="Center">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#E8F5E9"/>
-                                            </Style>
-                                        </Border.Style>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse Width="8" Height="8" Fill="#66BB6A" Margin="0,0,6,0"/>
-                                            <TextBlock Text="{Binding Status}" FontSize="12"
-                                                       Foreground="#388E3C" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                    </Border>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border CornerRadius="8" Padding="8,3" Margin="0,0,8,0"
+                                                Background="#FEF3C7"
+                                                Visibility="{Binding IsDefault, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock Text="⭐ Default" FontSize="10.5" FontWeight="SemiBold"
+                                                       Foreground="#B45309"/>
+                                        </Border>
+                                        <Border CornerRadius="8" Padding="10,4" Background="#DCFCE7">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Ellipse Width="6" Height="6" Fill="#16A34A" Margin="0,0,5,0"
+                                                         VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Status}" FontSize="11"
+                                                           Foreground="#15803D" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -429,96 +578,117 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Paired Devices" FontSize="28" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Manage connected Android devices — block, unblock, or remove"
-                               FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                </StackPanel>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl x:Name="DevicesList">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource BgCardBrush}" CornerRadius="12"
-                                        Padding="20" Margin="0,4" BorderBrush="{StaticResource BorderBrush}"
-                                        BorderThickness="1">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <!-- Device Icon -->
-                                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="10"
-                                                Background="{StaticResource PrimaryLightBrush}" Margin="0,0,16,0">
-                                            <TextBlock Text="📱" FontSize="20" HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"/>
-                                        </Border>
-                                        <!-- Device Info -->
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
-                                            <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                                                       Margin="0,3,0,0">
-                                                <Run Text="IP: "/><Run Text="{Binding IpAddress}"/>
-                                                <Run Text="  •  Paired: "/><Run Text="{Binding PairedAt, StringFormat='{}{0:g}'}"/>
-                                            </TextBlock>
-                                        </StackPanel>
-                                        <!-- Action Buttons -->
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal"
-                                                    VerticalAlignment="Center">
-                                            <Button Content="🔓 Unblock" Padding="12,6" Margin="4,0"
-                                                    Click="UnblockDevice_Click" Tag="{Binding Id}"
-                                                    Visibility="{Binding IsBlocked, Converter={StaticResource BoolToVisibility}}"
-                                                    Background="#43A047" Foreground="White" FontWeight="SemiBold"
-                                                    BorderThickness="0" Cursor="Hand">
-                                                <Button.Template>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center"
-                                                                              VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Button.Template>
-                                            </Button>
-                                            <Button Content="🚫 Block" Padding="12,6" Margin="4,0"
-                                                    Click="BlockDevice_Click" Tag="{Binding Id}"
-                                                    Visibility="{Binding IsBlocked, Converter={StaticResource InverseBoolToVisibility}}"
-                                                    Background="#FF9800" Foreground="White" FontWeight="SemiBold"
-                                                    BorderThickness="0" Cursor="Hand">
-                                                <Button.Template>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center"
-                                                                              VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Button.Template>
-                                            </Button>
-                                            <Button Content="🗑️ Remove" Padding="12,6" Margin="4,0"
-                                                    Click="RemoveDevice_Click" Tag="{Binding Id}"
-                                                    Background="#EF5350" Foreground="White" FontWeight="SemiBold"
-                                                    BorderThickness="0" Cursor="Hand">
-                                                <Button.Template>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="8" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center"
-                                                                              VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Button.Template>
-                                            </Button>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <Grid Grid.Row="0" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Paired Devices" FontSize="26" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Manage connected Android devices — block, unblock, or remove"
+                                   FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="🔄 Refresh Devices" Style="{StaticResource OutlinedButton}"
+                            Click="RefreshDevices_Click" Padding="12,7" VerticalAlignment="Center" FontSize="11.5"/>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="DevicesList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource BgCardBrush}" CornerRadius="12"
+                                            Padding="18,14" Margin="0,3" BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <!-- Device Icon -->
+                                            <Border Grid.Column="0" Width="40" Height="40" CornerRadius="8"
+                                                    Background="{StaticResource PrimaryLightBrush}" Margin="0,0,14,0">
+                                                <TextBlock Text="📱" FontSize="18" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
+                                            <!-- Device Info -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="11.5"
+                                                           Margin="0,2,0,0">
+                                                    <Run Text="IP: "/><Run Text="{Binding IpAddress}"/>
+                                                    <Run Text="  •  Paired: "/><Run Text="{Binding PairedAt, StringFormat='{}{0:g}'}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <!-- Action Buttons -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                        VerticalAlignment="Center">
+                                                <Button Content="🔓 Unblock" Padding="12,6" Margin="3,0"
+                                                        Click="UnblockDevice_Click" Tag="{Binding Id}"
+                                                        Visibility="{Binding IsBlocked, Converter={StaticResource BoolToVisibility}}"
+                                                        Background="#16A34A" Foreground="White" FontWeight="SemiBold"
+                                                        BorderThickness="0" Cursor="Hand" FontSize="11.5">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                                  VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                <Button Content="🚫 Block" Padding="12,6" Margin="3,0"
+                                                        Click="BlockDevice_Click" Tag="{Binding Id}"
+                                                        Visibility="{Binding IsBlocked, Converter={StaticResource InverseBoolToVisibility}}"
+                                                        Background="#F59E0B" Foreground="White" FontWeight="SemiBold"
+                                                        BorderThickness="0" Cursor="Hand" FontSize="11.5">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                                  VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                <Button Content="🗑️ Remove" Padding="12,6" Margin="3,0"
+                                                        Click="RemoveDevice_Click" Tag="{Binding Id}"
+                                                        Background="#EF4444" Foreground="White" FontWeight="SemiBold"
+                                                        BorderThickness="0" Cursor="Hand" FontSize="11.5">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                                  VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Border x:Name="DevicesEmptyState" Background="Transparent"
+                            Padding="40" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="📱" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8" Opacity="0.5"/>
+                            <TextBlock Text="No Paired Devices Yet" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Scan the QR code on the Dashboard tab with your phone to pair and print."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"
+                                       HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
 
             <!-- ── Logs Page ── -->
@@ -527,15 +697,27 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Server Logs" FontSize="28" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Real-time server activity" FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                </StackPanel>
+                <Grid Grid.Row="0" Margin="0,0,0,18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Server Logs" FontSize="26" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Real-time server activity &amp; events" FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="📋 Copy Logs" Style="{StaticResource OutlinedButton}"
+                                Click="CopyLogs_Click" Padding="12,7" Margin="0,0,8,0" FontSize="11.5"/>
+                        <Button Content="🧹 Clear Logs" Style="{StaticResource OutlinedButton}"
+                                Click="ClearLogs_Click" Padding="12,7" FontSize="11.5"/>
+                    </StackPanel>
+                </Grid>
                 <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
                     <TextBox x:Name="LogsTextBox" Background="{StaticResource BgInputBrush}"
-                             Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Cascadia Code, Consolas"
+                             Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Cascadia Code, Consolas, monospace"
                              FontSize="12" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
                              TextWrapping="Wrap" BorderThickness="0" Padding="16"
                              Text="Server logs will appear here..."/>
@@ -548,38 +730,68 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                    <TextBlock Text="Settings" FontSize="28" FontWeight="Bold"
+                <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                    <TextBlock Text="Settings" FontSize="26" FontWeight="Bold"
                                Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Configure server preferences" FontSize="13"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                    <TextBlock Text="Configure server preferences" FontSize="12.5"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
                 </StackPanel>
                 <Border Grid.Row="1" Style="{StaticResource CardBorder}" VerticalAlignment="Top">
-                    <StackPanel MaxWidth="480" HorizontalAlignment="Left">
+                    <StackPanel MaxWidth="520" HorizontalAlignment="Left">
                         <TextBlock Text="Default Printer" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="Medium" Margin="0,0,0,6"/>
-                        <ComboBox x:Name="DefaultPrinterCombo" Margin="0,0,0,20"
+                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <ComboBox x:Name="DefaultPrinterCombo" Margin="0,0,0,18"
                                   FontSize="13" Padding="10,8"/>
 
                         <TextBlock Text="Server Port" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="Medium" Margin="0,0,0,6"/>
+                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
                         <TextBox x:Name="PortInput" Text="5000" Style="{StaticResource ModernTextBox}"
-                                 Margin="0,0,0,20"/>
+                                 Margin="0,0,0,18"/>
 
                         <TextBlock Text="Server Name" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="Medium" Margin="0,0,0,6"/>
+                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
                         <TextBox x:Name="ServerNameInput" Style="{StaticResource ModernTextBox}"
-                                 Margin="0,0,0,24"/>
+                                 Margin="0,0,0,20"/>
 
                         <CheckBox x:Name="AutoStartCheck" Content="Start on system boot"
                                   Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  Margin="0,0,0,12"/>
+                                  Margin="0,0,0,10"/>
                         <CheckBox x:Name="MinimizeToTrayCheck" Content="Minimize to system tray"
                                   Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  IsChecked="True" Margin="0,0,0,28"/>
+                                  IsChecked="True" Margin="0,0,0,14"/>
+
+                        <Separator Margin="0,4,0,14" Background="{StaticResource BorderBrush}"/>
+
+                        <TextBlock Text="Network &amp; Security" Foreground="{StaticResource TextPrimaryBrush}"
+                                   FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                        <CheckBox x:Name="AutoApproveSameNetworkCheck"
+                                  Content="Auto-connect devices on same Wi-Fi subnet"
+                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                  IsChecked="True" Margin="0,0,0,6"/>
+                        <TextBlock Text="Phones on the same Wi-Fi network connect instantly without approval prompt."
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,12"
+                                   TextWrapping="Wrap"/>
+
+                        <CheckBox x:Name="RequireQrCodeOutsideLocalNetworkCheck"
+                                  Content="Require QR + PIN for devices on other networks"
+                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                  IsChecked="True" Margin="0,0,0,6"/>
+                        <TextBlock Text="Phones on a different network must scan the fixed QR code and enter the rotating PIN."
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,16"
+                                   TextWrapping="Wrap"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,22">
+                            <Button Content="🔄 Refresh PIN Now" Style="{StaticResource OutlinedButton}"
+                                    Click="RefreshPin_Click" HorizontalAlignment="Left" Padding="12,7"
+                                    Margin="0,0,10,0" FontSize="11.5"/>
+                            <Button Content="Reset Permanent QR Token" Style="{StaticResource OutlinedButton}"
+                                    Click="RegenerateQrToken_Click" HorizontalAlignment="Left" Padding="12,7"
+                                    FontSize="11.5"/>
+                        </StackPanel>
 
                         <Button Content="Save Settings" Style="{StaticResource ModernButton}"
-                                Click="SaveSettings_Click" HorizontalAlignment="Left" Padding="28,12"/>
+                                Click="SaveSettings_Click" HorizontalAlignment="Left" Padding="24,10"/>
                     </StackPanel>
                 </Border>
             </Grid>

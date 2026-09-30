@@ -50,6 +50,11 @@ public class DiscoveryService : IDisposable
             _logger.LogInformation(
                 "mDNS discovery started: {Name}._wifiprint._tcp on port {Port}",
                 _serverName, _port);
+
+            // Start UDP broadcast beacon as a fallback for networks where mDNS multicast is filtered
+            _udpCts = new CancellationTokenSource();
+            _ = Task.Run(() => BroadcastUdpBeaconAsync(_udpCts.Token));
+            _logger.LogInformation("UDP beacon discovery broadcast active on port {Port}", UdpBeaconPort);
         }
         catch (Exception ex)
         {
@@ -57,21 +62,67 @@ public class DiscoveryService : IDisposable
         }
     }
 
+    private const int UdpBeaconPort = 5058;
+    private CancellationTokenSource? _udpCts;
+
+    private async Task BroadcastUdpBeaconAsync(CancellationToken ct)
+    {
+        using var client = new UdpClient();
+        client.EnableBroadcast = true;
+        var endpoint = new IPEndPoint(IPAddress.Broadcast, UdpBeaconPort);
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var localIp = GetLocalIpAddress();
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    service = "wifiprint",
+                    name = _serverName,
+                    ip = localIp,
+                    port = _port,
+                    version = "2.0"
+                });
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes(payload);
+                await client.SendAsync(bytes, bytes.Length, endpoint);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogTrace(ex, "UDP beacon broadcast suppressed");
+            }
+
+            try
+            {
+                await Task.Delay(2500, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
     /// <summary>
-    /// Stops the mDNS broadcast.
+    /// Stops the mDNS broadcast and UDP beacon.
     /// </summary>
     public void Stop()
     {
         try
         {
+            _udpCts?.Cancel();
+            _udpCts?.Dispose();
+            _udpCts = null;
+
             if (_serviceProfile != null)
                 _serviceDiscovery?.Unadvertise(_serviceProfile);
             _mdns?.Stop();
-            _logger.LogInformation("mDNS discovery stopped");
+            _logger.LogInformation("mDNS and UDP beacon discovery stopped");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error stopping mDNS");
+            _logger.LogWarning(ex, "Error stopping discovery");
         }
     }
 

@@ -106,4 +106,42 @@ class NetworkMonitor(private val context: Context) {
             ""
         }
     }
+
+    /**
+     * Get the device's local IPv4 address on the current Wi-Fi network.
+     */
+    @Suppress("DEPRECATION")
+    fun getLocalIpAddress(): String? {
+        return try {
+            val ipInt = wifiManager.connectionInfo?.ipAddress ?: return null
+            if (ipInt == 0) return null
+            String.format(
+                "%d.%d.%d.%d",
+                ipInt and 0xff,
+                ipInt shr 8 and 0xff,
+                ipInt shr 16 and 0xff,
+                ipInt shr 24 and 0xff
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Checks if a target server IP address is on the same local network subnet as this Android device.
+     */
+    fun isSameLocalSubnet(serverIp: String): Boolean {
+        val localIp = getLocalIpAddress() ?: return false // Default false if unable to determine — safer than assuming same network
+        if (serverIp == "localhost" || serverIp == "127.0.0.1") return true
+
+        val localParts = localIp.split('.')
+        val serverParts = serverIp.split('.')
+        if (localParts.size == 4 && serverParts.size == 4) {
+            // Check matching /24 prefix (first 3 octets, e.g. 192.168.1.X)
+            return localParts[0] == serverParts[0] &&
+                    localParts[1] == serverParts[1] &&
+                    localParts[2] == serverParts[2]
+        }
+        return false
+    }
 }

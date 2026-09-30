@@ -125,20 +125,17 @@ fun MainNavigation() {
             // QR Scanner launched from Home screen
             composable("home_qr_scanner") {
                 val parentEntry = remember(it) {
-                    navController.getBackStackEntry(Screen.Home.route)
+                    runCatching { navController.getBackStackEntry(Screen.Home.route) }.getOrNull()
                 }
-                val connectViewModel: ConnectViewModel = hiltViewModel(parentEntry)
+                val connectViewModel: ConnectViewModel = if (parentEntry != null) {
+                    hiltViewModel(parentEntry)
+                } else {
+                    hiltViewModel()
+                }
 
                 QrScannerScreen(
-                    onQrScanned = { qrData ->
-                        connectViewModel.connectFromQr(
-                            ip = qrData.ip,
-                            port = qrData.port,
-                            name = qrData.name,
-                            certFingerprint = qrData.certFingerprint
-                        )
-                        navController.popBackStack()
-                    },
+                    connectViewModel = connectViewModel,
+                    onConnected = { navController.popBackStack() },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -192,15 +189,11 @@ fun MainNavigation() {
                 val connectViewModel: ConnectViewModel = hiltViewModel(parentEntry)
 
                 QrScannerScreen(
-                    onQrScanned = { qrData ->
-                        connectViewModel.connectFromQr(
-                            ip = qrData.ip,
-                            port = qrData.port,
-                            name = qrData.name,
-                            certFingerprint = qrData.certFingerprint
-                        )
-                        // Go back to Discovery to show connecting state
-                        navController.popBackStack()
+                    connectViewModel = connectViewModel,
+                    onConnected = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                        }
                     },
                     onBack = { navController.popBackStack() }
                 )
