@@ -304,6 +304,50 @@ public sealed class QueueAndSecurityTests : IDisposable
     }
 
     [Fact]
+    public async Task AuthController_Requests_Approval_When_OnAnotherNetwork_With_Valid_QrCode()
+    {
+        var store = CreateStateStore();
+        store.EnsureCreated();
+
+        var settings = new AppSettings
+        {
+            AutoApproveSameNetwork = true,
+            RequireQrCodeOutsideLocalNetwork = true,
+            CurrentQrPairingToken = "PERMANENT_QR_TOKEN"
+        };
+        var authService = new AuthService(settings, NullLogger<AuthService>.Instance, store);
+        var controller = new AuthController(authService, settings, NullLogger<AuthController>.Instance);
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = IPAddress.Parse("198.51.100.42");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        // Wire up approval handler (representing the server dashboard / notification panel)
+        PendingApproval? receivedApproval = null;
+        authService.OnApprovalRequested += approval =>
+        {
+            receivedApproval = approval;
+            authService.ApproveDevice(approval.Id);
+        };
+
+        var qrRequest = new ConnectionRequest
+        {
+            DeviceName = "Remote Phone",
+            DeviceModel = "Galaxy S23",
+            QrToken = "PERMANENT_QR_TOKEN"
+        };
+
+        var result = await controller.RequestConnection(qrRequest);
+        Assert.NotNull(receivedApproval);
+        Assert.Equal("Remote Phone", receivedApproval.DeviceName);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var apiResponse = Assert.IsType<ApiResponse<AuthResponse>>(okResult.Value);
+        Assert.True(apiResponse.Success);
+        Assert.NotNull(apiResponse.Data?.Token);
+    }
+
+    [Fact]
     public void AppSettings_GeneratePin_Produces_6Digit_Numeric_String()
     {
         for (int i = 0; i < 50; i++)

@@ -315,6 +315,11 @@
                                     </Grid>
                                 </Border>
 
+                                <!-- Print QR Code on Paper Button -->
+                                <Button Content="🖨 Print QR on Paper" Style="{StaticResource OutlinedButton}"
+                                        Click="PrintQrCode_Click" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                                        Padding="8,6" FontSize="11" ToolTip="Print a permanent QR code sign to place on a desk or wall"/>
+
                                 <!-- Pairing PIN Card (for devices on other networks) -->
                                 <Border Background="#FAF5FF" BorderBrush="#E9D5FF" BorderThickness="1" CornerRadius="10"
                                         Padding="10,6" Margin="0,8,0,0" HorizontalAlignment="Stretch">
@@ -736,64 +741,129 @@
                     <TextBlock Text="Configure server preferences" FontSize="12.5"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0"/>
                 </StackPanel>
-                <Border Grid.Row="1" Style="{StaticResource CardBorder}" VerticalAlignment="Top">
-                    <StackPanel MaxWidth="520" HorizontalAlignment="Left">
-                        <TextBlock Text="Default Printer" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <ComboBox x:Name="DefaultPrinterCombo" Margin="0,0,0,18"
-                                  FontSize="13" Padding="10,8"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Border Style="{StaticResource CardBorder}" VerticalAlignment="Top" Margin="0,0,12,24">
+                        <StackPanel MaxWidth="520" HorizontalAlignment="Left">
+                            <TextBlock Text="Default Printer" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <ComboBox x:Name="DefaultPrinterCombo" Margin="0,0,0,18"
+                                      FontSize="13" Padding="10,8"/>
 
-                        <TextBlock Text="Server Port" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <TextBox x:Name="PortInput" Text="5000" Style="{StaticResource ModernTextBox}"
-                                 Margin="0,0,0,18"/>
+                            <TextBlock Text="Server Port" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox x:Name="PortInput" Text="5000" Style="{StaticResource ModernTextBox}"
+                                     Margin="0,0,0,18"/>
 
-                        <TextBlock Text="Server Name" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <TextBox x:Name="ServerNameInput" Style="{StaticResource ModernTextBox}"
-                                 Margin="0,0,0,20"/>
+                            <TextBlock Text="Server Name" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox x:Name="ServerNameInput" Style="{StaticResource ModernTextBox}"
+                                     Margin="0,0,0,20"/>
 
-                        <CheckBox x:Name="AutoStartCheck" Content="Start on system boot"
-                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  Margin="0,0,0,10"/>
-                        <CheckBox x:Name="MinimizeToTrayCheck" Content="Minimize to system tray"
-                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  IsChecked="True" Margin="0,0,0,14"/>
+                            <CheckBox x:Name="AutoStartCheck" Content="Start on system boot"
+                                      Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                      Margin="0,0,0,10"/>
+                            <CheckBox x:Name="MinimizeToTrayCheck" Content="Minimize to system tray"
+                                      Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                      IsChecked="True" Margin="0,0,0,14"/>
 
-                        <Separator Margin="0,4,0,14" Background="{StaticResource BorderBrush}"/>
+                            <Separator Margin="0,4,0,14" Background="{StaticResource BorderBrush}"/>
 
-                        <TextBlock Text="Network &amp; Security" Foreground="{StaticResource TextPrimaryBrush}"
-                                   FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <TextBlock Text="Network &amp; Security" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
 
-                        <CheckBox x:Name="AutoApproveSameNetworkCheck"
-                                  Content="Auto-connect devices on same Wi-Fi subnet"
-                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  IsChecked="True" Margin="0,0,0,6"/>
-                        <TextBlock Text="Phones on the same Wi-Fi network connect instantly without approval prompt."
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,12"
-                                   TextWrapping="Wrap"/>
+                            <CheckBox x:Name="AutoApproveSameNetworkCheck"
+                                      Content="Auto-connect devices on same Wi-Fi subnet"
+                                      Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                      IsChecked="True" Margin="0,0,0,6"/>
+                            <TextBlock Text="Phones on the same Wi-Fi network connect instantly without approval prompt."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,12"
+                                       TextWrapping="Wrap"/>
 
-                        <CheckBox x:Name="RequireQrCodeOutsideLocalNetworkCheck"
-                                  Content="Require QR + PIN for devices on other networks"
-                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
-                                  IsChecked="True" Margin="0,0,0,6"/>
-                        <TextBlock Text="Phones on a different network must scan the fixed QR code and enter the rotating PIN."
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,16"
-                                   TextWrapping="Wrap"/>
+                            <CheckBox x:Name="RequireQrCodeOutsideLocalNetworkCheck"
+                                      Content="Require QR + Approval for remote devices"
+                                      Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                      IsChecked="True" Margin="0,0,0,6"/>
+                            <TextBlock Text="Phones on mobile data or other networks must scan the permanent QR code and wait for admin approval."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="24,0,0,16"
+                                       TextWrapping="Wrap"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,22">
-                            <Button Content="🔄 Refresh PIN Now" Style="{StaticResource OutlinedButton}"
-                                    Click="RefreshPin_Click" HorizontalAlignment="Left" Padding="12,7"
-                                    Margin="0,0,10,0" FontSize="11.5"/>
-                            <Button Content="Reset Permanent QR Token" Style="{StaticResource OutlinedButton}"
-                                    Click="RegenerateQrToken_Click" HorizontalAlignment="Left" Padding="12,7"
-                                    FontSize="11.5"/>
+                            <Separator Margin="0,4,0,14" Background="{StaticResource BorderBrush}"/>
+
+                            <TextBlock Text="☁ Cloud Relay (Print from Anywhere)" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="14" FontWeight="Bold" Margin="0,0,0,4"/>
+                            <TextBlock Text="Enable a secure tunnel so phones can print from any network (mobile data, guest WiFi, etc). Same WiFi users connect directly — no change for them."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,10"
+                                       TextWrapping="Wrap"/>
+
+                            <CheckBox x:Name="EnableCloudRelayCheck"
+                                      Content="Enable Cloud Relay"
+                                      Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                      Margin="0,0,0,8"/>
+
+                            <!-- Custom / Permanent Public URL for Paper QR Codes -->
+                            <TextBlock Text="Permanent Public URL / Domain (Optional)" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                            <TextBox x:Name="CustomPublicUrlInput" Style="{StaticResource ModernTextBox}"
+                                     Margin="0,0,0,4"/>
+                            <TextBlock Text="If you have a permanent domain or Cloudflare tunnel (e.g. https://print.yourdomain.com), enter it here. This URL is embedded in the permanent QR code so printed paper signs work forever."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,12"
+                                       TextWrapping="Wrap"/>
+
+                            <!-- Cloud Relay Status Indicator -->
+                            <Border x:Name="TunnelStatusBorder" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1"
+                                    CornerRadius="8" Padding="10,6" Margin="0,0,0,14" Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock x:Name="TunnelStatusText" Text="🌐 Tunnel: Not active"
+                                               Foreground="#15803D" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="TunnelUrlText" Text=""
+                                               Foreground="#166534" FontSize="10" FontFamily="Consolas"
+                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Separator Margin="0,4,0,14" Background="{StaticResource BorderBrush}"/>
+
+                            <TextBlock Text="⏱ Rate Limiting (Remote Users Only)" Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="14" FontWeight="Bold" Margin="0,0,0,4"/>
+                            <TextBlock Text="These limits only apply to devices connecting via Cloud Relay (other networks). Same WiFi users have no restrictions."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,10"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock Text="Session Duration (minutes)" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox x:Name="SessionDurationInput" Style="{StaticResource ModernTextBox}"
+                                     Text="60" Margin="0,0,0,4"/>
+                            <TextBlock Text="How long a remote device can print after connecting. 0 = unlimited."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,12"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock Text="Max Prints Per Session" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox x:Name="MaxPrintsInput" Style="{StaticResource ModernTextBox}"
+                                     Text="10" Margin="0,0,0,4"/>
+                            <TextBlock Text="Maximum print jobs per session for remote devices. 0 = unlimited."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,12"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock Text="Cooldown Between Prints (seconds)" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox x:Name="PrintCooldownInput" Style="{StaticResource ModernTextBox}"
+                                     Text="30" Margin="0,0,0,4"/>
+                            <TextBlock Text="Minimum wait time between print jobs from the same remote device. 0 = no cooldown."
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,0,0,16"
+                                       TextWrapping="Wrap"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,22">
+                                <Button Content="🔄 Refresh PIN Now" Style="{StaticResource OutlinedButton}"
+                                        Click="RefreshPin_Click" HorizontalAlignment="Left" Padding="12,7"
+                                        FontSize="11.5"/>
+                            </StackPanel>
+
+                            <Button Content="Save Settings" Style="{StaticResource ModernButton}"
+                                    Click="SaveSettings_Click" HorizontalAlignment="Left" Padding="24,10"/>
                         </StackPanel>
-
-                        <Button Content="Save Settings" Style="{StaticResource ModernButton}"
-                                Click="SaveSettings_Click" HorizontalAlignment="Left" Padding="24,10"/>
-                    </StackPanel>
-                </Border>
+                    </Border>
+                </ScrollViewer>
             </Grid>
         </Grid>
     </Grid>

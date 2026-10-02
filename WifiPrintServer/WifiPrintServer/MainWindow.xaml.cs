@@ -38,6 +38,11 @@ public partial class MainWindow : Window
         MinimizeToTrayCheck.IsChecked = Program.Settings.MinimizeToTray;
         AutoApproveSameNetworkCheck.IsChecked = Program.Settings.AutoApproveSameNetwork;
         RequireQrCodeOutsideLocalNetworkCheck.IsChecked = Program.Settings.RequireQrCodeOutsideLocalNetwork;
+        EnableCloudRelayCheck.IsChecked = Program.Settings.EnableCloudRelay;
+        CustomPublicUrlInput.Text = Program.Settings.CustomPublicUrl ?? string.Empty;
+        SessionDurationInput.Text = Program.Settings.SessionDurationMinutes.ToString();
+        MaxPrintsInput.Text = Program.Settings.MaxPrintsPerSession.ToString();
+        PrintCooldownInput.Text = Program.Settings.PrintCooldownSeconds.ToString();
 
         // Display server IP & PIN
         var ip = DiscoveryService.GetLocalIpAddress();
@@ -158,8 +163,9 @@ public partial class MainWindow : Window
             if (!next.CompletionSource.Task.IsCompleted)
             {
                 _currentApproval = next;
-                ApprovalDeviceName.Text = $"📱 {next.DeviceName} ({next.DeviceModel})";
-                ApprovalDeviceIp.Text = $"IP: {next.IpAddress}" + (_pendingApprovals.Count > 0 ? $"  (+{_pendingApprovals.Count} more queued)" : "");
+                var remoteTag = next.ConnectedViaTunnel ? " • ☁ Remote User" : "";
+                ApprovalDeviceName.Text = $"📱 {next.DeviceName} ({next.DeviceModel}){remoteTag}";
+                ApprovalDeviceIp.Text = $"IP: {next.IpAddress}" + (next.ConnectedViaTunnel ? " [Cloud Relay]" : "") + (_pendingApprovals.Count > 0 ? $"  (+{_pendingApprovals.Count} more queued)" : "");
                 ApprovalBanner.Visibility = Visibility.Visible;
                 ApprovalIdle.Visibility = Visibility.Collapsed;
 
@@ -172,9 +178,10 @@ public partial class MainWindow : Window
 
                 // Play notification sound & show system tray notification
                 System.Media.SystemSounds.Asterisk.Play();
-                App.ShowTrayNotification("📲 Connection Request", $"{next.DeviceName} ({next.DeviceModel}) wants to connect", System.Windows.Forms.ToolTipIcon.Info);
+                var trayTitle = next.ConnectedViaTunnel ? "☁ Remote Connection Request" : "📲 Connection Request";
+                App.ShowTrayNotification(trayTitle, $"{next.DeviceName} wants to connect to print. Click to open.", System.Windows.Forms.ToolTipIcon.Info);
 
-                AppendLog($"[{DateTime.Now:HH:mm:ss}] 📲 Connection request from: {next.DeviceName} ({next.IpAddress})");
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] 📲 Connection request from: {next.DeviceName} ({next.IpAddress}){(next.ConnectedViaTunnel ? " [Remote Cloud Relay]" : "")}");
                 return;
             }
         }
@@ -459,6 +466,21 @@ public partial class MainWindow : Window
         Program.Settings.AutoApproveSameNetwork = AutoApproveSameNetworkCheck.IsChecked == true;
         Program.Settings.RequireQrCodeOutsideLocalNetwork = RequireQrCodeOutsideLocalNetworkCheck.IsChecked == true;
 
+        // Save cloud relay setting
+        bool wasRelayEnabled = Program.Settings.EnableCloudRelay;
+        Program.Settings.EnableCloudRelay = EnableCloudRelayCheck.IsChecked == true;
+        Program.Settings.CustomPublicUrl = string.IsNullOrWhiteSpace(CustomPublicUrlInput.Text)
+            ? null
+            : CustomPublicUrlInput.Text.Trim();
+
+        // Save rate limiting settings
+        if (int.TryParse(SessionDurationInput.Text, out int sessionMins))
+            Program.Settings.SessionDurationMinutes = Math.Max(0, sessionMins);
+        if (int.TryParse(MaxPrintsInput.Text, out int maxPrints))
+            Program.Settings.MaxPrintsPerSession = Math.Max(0, maxPrints);
+        if (int.TryParse(PrintCooldownInput.Text, out int cooldown))
+            Program.Settings.PrintCooldownSeconds = Math.Max(0, cooldown);
+
         // Save default printer selection
         if (DefaultPrinterCombo.SelectedItem is string selectedPrinter && !string.IsNullOrEmpty(selectedPrinter))
         {
@@ -469,18 +491,26 @@ public partial class MainWindow : Window
         Program.Settings.Save();
         SetAutoStart(Program.Settings.AutoStart);
 
+        // Handle cloud relay toggle change
+        if (Program.Settings.EnableCloudRelay && !wasRelayEnabled)
+        {
+            // Start tunnel
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ☁ Starting Cloud Relay tunnel...");
+            StartCloudRelay();
+        }
+        else if (!Program.Settings.EnableCloudRelay && wasRelayEnabled)
+        {
+            // Stop tunnel
+            Program.TunnelServiceInstance?.Stop();
+            UpdateTunnelStatus(null);
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ☁ Cloud Relay tunnel stopped");
+        }
+
+        // Refresh permanent QR code on dashboard
+        GenerateConnectionQrCode();
+
         MessageBox.Show("Settings saved. Some changes require a restart.",
             "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-
-    private void RegenerateQrToken_Click(object sender, RoutedEventArgs e)
-    {
-        Program.Settings.CurrentQrPairingToken = AppSettings.GenerateSecureToken(16);
-        Program.Settings.Save();
-        GenerateConnectionQrCode();
-        AppendLog($"[{DateTime.Now:HH:mm:ss}] 🔄 Generated new QR pairing token");
-        MessageBox.Show("A new secure QR token has been generated and updated on the dashboard.",
-            "QR Token Rotated", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CopyUrl_Click(object sender, RoutedEventArgs e)
@@ -534,8 +564,12 @@ public partial class MainWindow : Window
     // ═══════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Generates and displays the connection QR code on the dashboard.
-    /// The QR encodes: { ip, port, name, cert } so phones can connect instantly.
+    /// Generates and displays the permanent connection QR code on the dashboard.
+    /// The QR encodes: { ip, port, name, cert, token, tunnel } so phones can connect.
+    /// PERMANENT QR: To ensure paper-printed QR codes NEVER change and remain permanently valid:
+    /// - Uses the permanent pairing token (never rotates automatically).
+    /// - Uses CustomPublicUrl if configured (permanent domain/named tunnel).
+    /// - Ephemeral quick tunnel subdomains do NOT mutate the permanent QR code.
     /// </summary>
     private void GenerateConnectionQrCode()
     {
@@ -546,15 +580,265 @@ public partial class MainWindow : Window
             var name = Program.Settings.ServerName;
             var cert = Program.ServerCertificate;
 
-            var qrImage = QrCodeService.GenerateConnectionQrCode(ip, port, name, cert, Program.Settings.CurrentQrPairingToken);
-            QrCodeImage.Source = qrImage;
-            QrInfoText.Text = $"{ip}:{port}";
+            // Only use permanent CustomPublicUrl for the QR payload so printed QR never breaks
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : null;
 
-            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready — scan from your phone to connect");
+            var qrImage = QrCodeService.GenerateConnectionQrCode(
+                ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
+            QrCodeImage.Source = qrImage;
+
+            if (!string.IsNullOrEmpty(tunnelUrl))
+                QrInfoText.Text = $"☁ {tunnelUrl}";
+            else
+                QrInfoText.Text = $"{ip}:{port}";
+
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready (Permanent — safe for paper printing)");
         }
         catch (Exception ex)
         {
             AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ QR code generation failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Prints a high-resolution, professional A4/Letter sign containing the permanent QR code
+    /// and step-by-step instructions for customers and users to connect and print.
+    /// </summary>
+    private void PrintQrCode_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var printDlg = new PrintDialog();
+            if (printDlg.ShowDialog() != true) return;
+
+            var visual = CreatePrintableQrSign();
+            printDlg.PrintVisual(visual, "WiFi Print Server - Connection QR Code Sign");
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 🖨 QR Code sign sent to printer");
+            App.ShowTrayNotification("🖨 Printing QR Sign", "Permanent QR code sign sent to printer.", System.Windows.Forms.ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to print QR code sign: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Print failed: {ex.Message}");
+        }
+    }
+
+    private FrameworkElement CreatePrintableQrSign()
+    {
+        var ip = DiscoveryService.GetLocalIpAddress();
+        var port = Program.Settings.ServerPort;
+        var name = Program.Settings.ServerName;
+        var cert = Program.ServerCertificate;
+        string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+            ? Program.Settings.CustomPublicUrl.Trim()
+            : null;
+
+        var qrBitmap = QrCodeService.GenerateConnectionQrCode(
+            ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
+
+        var border = new Border
+        {
+            Width = 650,
+            Height = 880,
+            Background = System.Windows.Media.Brushes.White,
+            BorderBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#E2E8F0")!,
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(36),
+            Margin = new Thickness(10)
+        };
+
+        var stack = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var headerPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
+        var title = new TextBlock
+        {
+            Text = "🖨 WiFi Print Station",
+            FontSize = 32,
+            FontWeight = FontWeights.Bold,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0F172A")!,
+            TextAlignment = TextAlignment.Center
+        };
+        var subtitle = new TextBlock
+        {
+            Text = "Scan to connect & print documents directly from your phone",
+            FontSize = 14,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#64748B")!,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        headerPanel.Children.Add(title);
+        headerPanel.Children.Add(subtitle);
+        stack.Children.Add(headerPanel);
+
+        // QR Code Card
+        var qrCard = new Border
+        {
+            Background = System.Windows.Media.Brushes.White,
+            BorderBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#CBD5E1")!,
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 0, 0, 16),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        var qrImg = new Image
+        {
+            Source = qrBitmap,
+            Width = 300,
+            Height = 300
+        };
+        qrCard.Child = qrImg;
+        stack.Children.Add(qrCard);
+
+        var serverInfo = new TextBlock
+        {
+            Text = $"Server: {name}   •   {(string.IsNullOrEmpty(tunnelUrl) ? $"{ip}:{port}" : tunnelUrl)}",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#334155")!,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 18)
+        };
+        stack.Children.Add(serverInfo);
+
+        // Instructions Card
+        var instructionsBorder = new Border
+        {
+            Background = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#F8FAFC")!,
+            BorderBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#E2E8F0")!,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(24, 16, 24, 16),
+            Margin = new Thickness(0, 0, 0, 14),
+            Width = 520
+        };
+
+        var instructionsStack = new StackPanel();
+        var stepHeader = new TextBlock
+        {
+            Text = "HOW TO PRINT FROM YOUR PHONE",
+            FontSize = 12,
+            FontWeight = FontWeights.Bold,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#6366F1")!,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        instructionsStack.Children.Add(stepHeader);
+
+        var step1 = new TextBlock
+        {
+            Text = "1. Connect to Wi-Fi (or use Mobile Data for remote printing)",
+            FontSize = 12.5,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E293B")!,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        var step2 = new TextBlock
+        {
+            Text = "2. Open the WiFi Print app and tap 'Scan QR Code'",
+            FontSize = 12.5,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E293B")!,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        var step3 = new TextBlock
+        {
+            Text = "3. Point camera at this QR sign — wait for admin approval on the PC screen",
+            FontSize = 12.5,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E293B")!,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        var step4 = new TextBlock
+        {
+            Text = "4. Once approved, select PDF, Word documents or Photos and tap Print!",
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0F172A")!
+        };
+        instructionsStack.Children.Add(step1);
+        instructionsStack.Children.Add(step2);
+        instructionsStack.Children.Add(step3);
+        instructionsStack.Children.Add(step4);
+        instructionsBorder.Child = instructionsStack;
+        stack.Children.Add(instructionsBorder);
+
+        border.Child = stack;
+
+        // Measure and arrange for high-resolution printing
+        border.Measure(new Size(650, 880));
+        border.Arrange(new Rect(0, 0, 650, 880));
+        border.UpdateLayout();
+
+        return border;
+    }
+
+    /// <summary>
+    /// Starts the cloud relay tunnel and wires up status events.
+    /// </summary>
+    private void StartCloudRelay()
+    {
+        if (Program.TunnelServiceInstance == null) return;
+
+        Program.TunnelServiceInstance.OnTunnelReady += url =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                UpdateTunnelStatus(url);
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] 🌐 Cloud Relay active: {url}");
+                App.ShowTrayNotification("☁ Cloud Relay Active",
+                    $"Print from anywhere: {url}", System.Windows.Forms.ToolTipIcon.Info);
+            });
+        };
+
+        Program.TunnelServiceInstance.OnTunnelStopped += reason =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                UpdateTunnelStatus(null);
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Cloud Relay stopped: {reason}");
+            });
+        };
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Program.TunnelServiceInstance.StartAsync(Program.Settings.ServerPort);
+            }
+            catch (Exception ex)
+            {
+                _ = Dispatcher.BeginInvoke(() =>
+                {
+                    AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Cloud Relay failed: {ex.Message}");
+                    UpdateTunnelStatus(null);
+                });
+            }
+        });
+    }
+
+    /// <summary>
+    /// Updates the tunnel status indicator in the Settings page.
+    /// </summary>
+    private void UpdateTunnelStatus(string? tunnelUrl)
+    {
+        if (!string.IsNullOrEmpty(tunnelUrl))
+        {
+            TunnelStatusBorder.Visibility = Visibility.Visible;
+            TunnelStatusBorder.Background = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F0FDF4"));
+            TunnelStatusBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#BBF7D0"));
+            TunnelStatusText.Text = "🌐 Tunnel: Active";
+            TunnelUrlText.Text = tunnelUrl;
+        }
+        else
+        {
+            TunnelStatusBorder.Visibility = Visibility.Collapsed;
+            TunnelStatusText.Text = "🌐 Tunnel: Not active";
+            TunnelUrlText.Text = "";
         }
     }
 

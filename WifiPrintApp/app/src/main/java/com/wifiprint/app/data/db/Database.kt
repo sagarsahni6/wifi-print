@@ -54,7 +54,7 @@ interface ServerDao {
 
 @Database(
     entities = [PrintJob::class, ServerInfo::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +67,12 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE servers ADD COLUMN certificateFingerprint TEXT")
                 db.execSQL("ALTER TABLE servers ADD COLUMN lastAuthCheckAt INTEGER")
                 db.execSQL("ALTER TABLE servers ADD COLUMN connectionHealth TEXT NOT NULL DEFAULT 'Unknown'")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE servers ADD COLUMN tunnelUrl TEXT")
             }
         }
     }

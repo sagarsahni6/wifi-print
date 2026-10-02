@@ -137,6 +137,7 @@ public partial class App : Application
         }
         catch { }
         _trayIcon?.Dispose();
+        Program.TunnelServiceInstance?.Dispose();
         Program.Discovery?.Dispose();
         base.OnExit(e);
     }

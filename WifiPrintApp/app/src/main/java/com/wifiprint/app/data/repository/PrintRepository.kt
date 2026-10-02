@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.gson.Gson
+import org.json.JSONObject
 import com.wifiprint.app.data.api.ContentUriRequestBody
 import com.wifiprint.app.data.api.PrintApiService
 import com.wifiprint.app.data.db.PrintJobDao
@@ -55,17 +56,43 @@ class PrintRepository @Inject constructor(
     private var currentApiService: PrintApiService? = null
     private var observedServerFingerprint: String? = null
 
+    /**
+     * Determines whether the given URL is a Cloudflare Quick Tunnel or remote domain.
+     * Tunnel URLs use public CA-signed SSL certificates, unlike local IP self-signed certs.
+     */
+    private fun isTunnelUrl(url: String): Boolean {
+        return url.contains(".trycloudflare.com", ignoreCase = true) ||
+               url.contains("cloudflare", ignoreCase = true) ||
+               !url.matches(Regex("https?://\\d+\\.\\d+\\.\\d+\\.\\d+.*"))
+    }
+
     /** Connect to a specific server and configure the API client. */
     fun connectToServer(server: ServerInfo) {
         currentServer = server
-        currentBaseUrl = "https://${server.ipAddress}:${server.port}/"
+        val isTunnel = !server.tunnelUrl.isNullOrBlank()
+        val normalizedTunnel = server.tunnelUrl?.trim()?.let {
+            if (it.endsWith("/")) it else "$it/"
+        }
+        val isSameSubnet = !server.ipAddress.isNullOrBlank() && NetworkMonitor(context).isSameLocalSubnet(server.ipAddress)
+
+        currentBaseUrl = if (isTunnel && !isSameSubnet) {
+            normalizedTunnel!!
+        } else if (!server.ipAddress.isNullOrBlank()) {
+            "https://${server.ipAddress}:${server.port}/"
+        } else if (isTunnel) {
+            normalizedTunnel!!
+        } else {
+            "https://localhost:${server.port}/"
+        }
+
         currentToken = server.token
         observedServerFingerprint = null
+        val useTunnelTls = isTunnelUrl(currentBaseUrl)
         currentApiService = createApiService(
             baseUrl = currentBaseUrl,
             token = server.token,
-            pinnedFingerprint = server.certificateFingerprint,
-            allowTrustOnFirstUse = server.certificateFingerprint.isNullOrBlank()
+            pinnedFingerprint = if (useTunnelTls) null else server.certificateFingerprint,
+            allowTrustOnFirstUse = useTunnelTls || server.certificateFingerprint.isNullOrBlank()
         ) { fingerprint ->
             observedServerFingerprint = fingerprint
         }
@@ -90,69 +117,91 @@ class PrintRepository @Inject constructor(
 
     /**
      * Request connection approval from the server.
-     * Uses trust-on-first-use for the initial pair and pins the observed certificate afterwards.
+     * Supports both local Wi-Fi connections and remote Cloudflare Quick Tunnel URLs.
      */
     suspend fun requestConnectionApproval(
         serverIp: String,
         port: Int,
         deviceName: String,
         qrToken: String? = null,
-        pin: String? = null
+        pin: String? = null,
+        tunnelUrl: String? = null
     ): Result<AuthResponse> {
-        var capturedFingerprint: String? = null
+        val isSameNet = serverIp.isNotBlank() && NetworkMonitor(context).isSameLocalSubnet(serverIp)
+        val hasTunnel = !tunnelUrl.isNullOrBlank()
+        val normalizedTunnel = tunnelUrl?.trim()?.let { if (it.endsWith("/")) it else "$it/" }
 
-        return try {
-            val tempApi = createApiService(
-                baseUrl = "https://$serverIp:$port/",
-                token = null,
-                pinnedFingerprint = null,
-                allowTrustOnFirstUse = true,
-                readTimeoutSeconds = 90,
-                onCertificateSeen = { fingerprint -> capturedFingerprint = fingerprint }
-            )
-
-            val isSameNet = NetworkMonitor(context).isSameLocalSubnet(serverIp)
-
-            val request = ConnectionRequest(
-                deviceName = deviceName,
-                deviceModel = android.os.Build.MODEL,
-                qrToken = qrToken,
-                pin = pin,
-                isSameNetwork = isSameNet
-            )
-
-            val response = tempApi.requestConnection(request)
-            if (response.isSuccessful && response.body()?.success == true) {
-                val authData = response.body()!!.data!!
-                val fingerprint = capturedFingerprint
-                    ?: return Result.failure(Exception("Server certificate was not captured during pairing"))
-
-                val server = ServerInfo(
-                    id = "$serverIp:$port",
-                    name = authData.serverName,
-                    ipAddress = serverIp,
-                    port = port,
-                    token = authData.token,
-                    certificateFingerprint = fingerprint,
-                    isPaired = true,
-                    lastConnected = System.currentTimeMillis(),
-                    lastAuthCheckAt = System.currentTimeMillis(),
-                    connectionHealth = "Healthy"
-                ).apply {
-                    isSameNetwork = isSameNet
-                }
-                serverDao.insertServer(server)
-                connectToServer(server)
-
-                Result.success(authData)
-            } else {
-                Result.failure(apiFailure(response, "Connection failed"))
-            }
-        } catch (e: SocketTimeoutException) {
-            Result.failure(Exception("Request timed out — no response from PC. Please try again."))
-        } catch (e: Exception) {
-            Result.failure(e)
+        // Build list of target URLs to try:
+        // If not on same subnet and tunnel is available, prioritize the tunnel URL.
+        // Otherwise try local IP first, and fallback to tunnel if unreachable.
+        val urlsToTry = mutableListOf<String>()
+        if (hasTunnel && !isSameNet) {
+            urlsToTry.add(normalizedTunnel!!)
+            if (serverIp.isNotBlank()) urlsToTry.add("https://$serverIp:$port/")
+        } else {
+            if (serverIp.isNotBlank()) urlsToTry.add("https://$serverIp:$port/")
+            if (hasTunnel) urlsToTry.add(normalizedTunnel!!)
         }
+
+        var lastException: Exception? = null
+
+        for (targetBaseUrl in urlsToTry) {
+            var capturedFingerprint: String? = null
+            val isTunnelTarget = isTunnelUrl(targetBaseUrl)
+
+            try {
+                val tempApi = createApiService(
+                    baseUrl = targetBaseUrl,
+                    token = null,
+                    pinnedFingerprint = null,
+                    allowTrustOnFirstUse = true,
+                    readTimeoutSeconds = 90,
+                    onCertificateSeen = { fingerprint -> capturedFingerprint = fingerprint }
+                )
+
+                val request = ConnectionRequest(
+                    deviceName = deviceName,
+                    deviceModel = android.os.Build.MODEL,
+                    qrToken = qrToken,
+                    pin = pin,
+                    isSameNetwork = isSameNet && !isTunnelTarget
+                )
+
+                val response = tempApi.requestConnection(request)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val authData = response.body()!!.data!!
+                    val fingerprint = capturedFingerprint ?: ""
+
+                    val server = ServerInfo(
+                        id = if (isTunnelTarget) (tunnelUrl ?: "$serverIp:$port") else "$serverIp:$port",
+                        name = authData.serverName,
+                        ipAddress = serverIp,
+                        port = port,
+                        token = authData.token,
+                        certificateFingerprint = fingerprint.ifBlank { null },
+                        isPaired = true,
+                        lastConnected = System.currentTimeMillis(),
+                        lastAuthCheckAt = System.currentTimeMillis(),
+                        connectionHealth = "Healthy",
+                        tunnelUrl = tunnelUrl
+                    ).apply {
+                        isSameNetwork = isSameNet && !isTunnelTarget
+                    }
+                    serverDao.insertServer(server)
+                    connectToServer(server)
+
+                    return Result.success(authData)
+                } else {
+                    return Result.failure(apiFailure(response, "Connection failed"))
+                }
+            } catch (e: SocketTimeoutException) {
+                lastException = Exception("Request timed out — no response from PC. Please try again.")
+            } catch (e: Exception) {
+                lastException = e
+            }
+        }
+
+        return Result.failure(lastException ?: Exception("Connection failed"))
     }
 
     /** Legacy: Pair with server using a PIN code. */
@@ -443,15 +492,7 @@ class PrintRepository @Inject constructor(
         readTimeoutSeconds: Long = 60,
         onCertificateSeen: ((String) -> Unit)? = null
     ): PrintApiService {
-        val tlsBundle = CertificatePinning.createTlsBundle(
-            expectedFingerprint = pinnedFingerprint,
-            allowTrustOnFirstUse = allowTrustOnFirstUse,
-            onCertificateSeen = onCertificateSeen
-        )
-
-        val client = okHttpClient.newBuilder()
-            .sslSocketFactory(tlsBundle.sslSocketFactory, tlsBundle.trustManager)
-            .hostnameVerifier { _, _ -> true }
+        val clientBuilder = okHttpClient.newBuilder()
             .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -460,7 +501,22 @@ class PrintRepository @Inject constructor(
                 token?.let { builder.addHeader("Authorization", "Bearer $it") }
                 chain.proceed(builder.build())
             }
-            .build()
+
+        if (isTunnelUrl(baseUrl)) {
+            // Tunnel connections (e.g. *.trycloudflare.com) use valid CA-signed certificates.
+            // Android's default trust store validates them automatically.
+        } else {
+            // Local IP connections use the server's self-signed certificate with TOFU/pinning.
+            val tlsBundle = CertificatePinning.createTlsBundle(
+                expectedFingerprint = pinnedFingerprint,
+                allowTrustOnFirstUse = allowTrustOnFirstUse,
+                onCertificateSeen = onCertificateSeen
+            )
+            clientBuilder.sslSocketFactory(tlsBundle.sslSocketFactory, tlsBundle.trustManager)
+            clientBuilder.hostnameVerifier { _, _ -> true }
+        }
+
+        val client = clientBuilder.build()
 
         return Retrofit.Builder()
             .baseUrl(baseUrl)
@@ -471,19 +527,30 @@ class PrintRepository @Inject constructor(
     }
 
     private fun apiFailure(response: Response<*>, defaultMessage: String): Exception {
-        val responseMessage = when (response.code()) {
+        var parsedError: String? = null
+        try {
+            val errorJson = response.errorBody()?.string()
+            if (!errorJson.isNullOrBlank()) {
+                val obj = JSONObject(errorJson)
+                parsedError = obj.optString("error").ifBlank { obj.optString("message").ifBlank { null } }
+            }
+        } catch (_: Exception) {}
+
+        val apiMessage = extractApiMessage(response.body())
+        val serverMessage = parsedError ?: apiMessage
+
+        val genericMessage = when (response.code()) {
             401 -> "Your session expired. Reconnect to the server and try again."
-            403 -> "This device is blocked or no longer approved by the server."
+            403 -> "This device is not authorized or session expired."
             404 -> "The requested item was not found on the server."
             408 -> "The request timed out. Please try again."
             409 -> "The server rejected the request because the job state changed."
+            429 -> "Rate limit reached. Please wait before trying again."
             503 -> "The server is online but not ready to process this request."
             else -> null
         }
 
-        val apiMessage = extractApiMessage(response.body())
-        val fallback = response.errorBody()?.string()?.takeIf { it.isNotBlank() }
-        val message = responseMessage ?: apiMessage ?: fallback ?: defaultMessage
+        val message = serverMessage ?: genericMessage ?: defaultMessage
         return IOException(message)
     }
 

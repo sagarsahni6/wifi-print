@@ -51,7 +51,8 @@ class ConnectViewModel @Inject constructor(
                 port = server.port,
                 deviceName = deviceName,
                 qrToken = qrToken,
-                pin = pin
+                pin = pin,
+                tunnelUrl = server.tunnelUrl
             )
 
             result.fold(
@@ -82,15 +83,24 @@ class ConnectViewModel @Inject constructor(
 
     /**
      * Connects via QR code data — creates a ServerInfo from the scanned payload
-     * and initiates the approval flow with the QR security token and optional PIN.
+     * and initiates the approval flow with the QR security token, optional tunnel URL, and optional PIN.
      */
-    fun connectFromQr(ip: String, port: Int, name: String, certFingerprint: String, qrToken: String? = null, pin: String? = null) {
+    fun connectFromQr(
+        ip: String,
+        port: Int,
+        name: String,
+        certFingerprint: String,
+        qrToken: String? = null,
+        pin: String? = null,
+        tunnelUrl: String? = null
+    ) {
         val server = ServerInfo(
-            id = "$ip:$port",
+            id = if (!tunnelUrl.isNullOrBlank()) tunnelUrl else "$ip:$port",
             name = name,
             ipAddress = ip,
             port = port,
-            certificateFingerprint = certFingerprint.ifBlank { null }
+            certificateFingerprint = certFingerprint.ifBlank { null },
+            tunnelUrl = tunnelUrl
         )
         connectToServer(server, qrToken = qrToken, pin = pin)
     }

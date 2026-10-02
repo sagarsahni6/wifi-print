@@ -44,18 +44,53 @@ public class AuthController : ControllerBase
         if (ipAddress.StartsWith("::ffff:"))
             ipAddress = ipAddress.Substring(7);
 
-        bool isSameNetwork = remoteIp != null && NetworkUtils.IsSameLocalSubnet(remoteIp);
-        _logger.LogInformation("Connection request: {Name} from {IP} (SameNetwork={SameNet})",
-            request.DeviceName, ipAddress, isSameNetwork);
+        // Detect if this request came through the Cloudflare tunnel.
+        // cloudflared sets Cf-Connecting-Ip header with the real client IP.
+        bool isViaTunnel = HttpContext.Request.Headers.ContainsKey("Cf-Connecting-Ip");
+        if (isViaTunnel)
+        {
+            // Use the real client IP from the tunnel header
+            ipAddress = HttpContext.Request.Headers["Cf-Connecting-Ip"].FirstOrDefault() ?? ipAddress;
+        }
+
+        bool isSameNetwork = !isViaTunnel && remoteIp != null && NetworkUtils.IsSameLocalSubnet(remoteIp);
+        _logger.LogInformation("Connection request: {Name} from {IP} (SameNetwork={SameNet}, ViaTunnel={Tunnel})",
+            request.DeviceName, ipAddress, isSameNetwork, isViaTunnel);
 
         var cleanPin = request.Pin?.Trim().Replace(" ", "").Replace("-", "");
         bool hasPin = !string.IsNullOrWhiteSpace(cleanPin);
         bool hasQr = !string.IsNullOrWhiteSpace(request.QrToken);
 
-        // 1. If a PIN or QR token was provided, validate them regardless of network.
-        if (hasPin || hasQr)
+        // 1. Same-network Wi-Fi users (Auto-connect without prompt or QR scan)
+        if (isSameNetwork && _settings.AutoApproveSameNetwork)
         {
-            if (hasPin && !string.Equals(cleanPin, _settings.CurrentConnectionPin?.Trim(), StringComparison.OrdinalIgnoreCase))
+            var autoAuth = _authService.AutoApproveLocalDevice(
+                request.DeviceName,
+                request.DeviceModel ?? "Unknown",
+                ipAddress,
+                connectedViaTunnel: false);
+
+            _logger.LogInformation("Auto-approved client '{Name}' on same local Wi-Fi network ({IP})",
+                request.DeviceName, ipAddress);
+            return Ok(ApiResponse<AuthResponse>.Ok(autoAuth, "Connected automatically on local network"));
+        }
+
+        // 2. Validate QR token if provided (remote users scanning the printed QR code)
+        if (hasQr)
+        {
+            if (!string.Equals(request.QrToken?.Trim(), _settings.CurrentQrPairingToken?.Trim(), StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Invalid QR token",
+                    request.DeviceName, ipAddress);
+                return StatusCode(403, ApiResponse<object>.Fail(
+                    "Invalid QR code. Please scan the official printed QR code."));
+            }
+        }
+
+        // 3. Validate PIN if provided — entering the active on-screen PIN approves immediately
+        if (hasPin)
+        {
+            if (!string.Equals(cleanPin, _settings.CurrentConnectionPin?.Trim(), StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("Connection rejected for device {Name} at {IP}: Invalid PIN",
                     request.DeviceName, ipAddress);
@@ -63,70 +98,47 @@ public class AuthController : ControllerBase
                     "Invalid PIN. Please enter the current 6-digit PIN displayed on the PC screen."));
             }
 
-            if (hasQr && !string.Equals(request.QrToken?.Trim(), _settings.CurrentQrPairingToken?.Trim(), StringComparison.Ordinal))
-            {
-                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Invalid QR token",
-                    request.DeviceName, ipAddress);
-                return StatusCode(403, ApiResponse<object>.Fail(
-                    "Invalid QR code. Please scan the QR code displayed on the PC screen."));
-            }
-
-            // Valid PIN/QR — auto-approve immediately
-            var autoAuth = _authService.AutoApproveLocalDevice(
+            var pinAuth = _authService.AutoApproveLocalDevice(
                 request.DeviceName,
                 request.DeviceModel ?? "Unknown",
-                ipAddress);
+                ipAddress,
+                connectedViaTunnel: isViaTunnel);
 
-            _logger.LogInformation("Device '{Name}' approved via PIN/QR verification ({IP})",
-                request.DeviceName, ipAddress);
-            return Ok(ApiResponse<AuthResponse>.Ok(autoAuth, "Connected successfully via verification"));
+            _logger.LogInformation("Device '{Name}' approved via PIN entry ({IP}, tunnel={Tunnel})",
+                request.DeviceName, ipAddress, isViaTunnel);
+            return Ok(ApiResponse<AuthResponse>.Ok(pinAuth, "Connected successfully via PIN verification"));
         }
 
-        // 2. If on ANOTHER network and no PIN/QR was provided:
-        if (!isSameNetwork)
+        // 4. If remote user has neither QR nor PIN:
+        if (!hasQr && !hasPin && !isSameNetwork && _settings.RequireQrCodeOutsideLocalNetwork)
         {
-            if (_settings.RequireQrCodeOutsideLocalNetwork)
-            {
-                // Strict mode: PIN is required for cross-network
-                _logger.LogWarning("Connection rejected for device {Name} at {IP}: Cross-network without PIN",
-                    request.DeviceName, ipAddress);
-                return StatusCode(403, ApiResponse<object>.Fail(
-                    "This device is on another network. Please enter the 6-digit PIN displayed on the PC server dashboard."));
-            }
-
-            // Not strict — fall through to manual approval dialog below
-            _logger.LogInformation("Cross-network connection from {Name} at {IP} — falling through to manual approval",
+            _logger.LogWarning("Connection rejected for device {Name} at {IP}: Cross-network without QR/PIN",
                 request.DeviceName, ipAddress);
+            return StatusCode(403, ApiResponse<object>.Fail(
+                "Please scan the printed QR code on the counter to connect to the printer."));
         }
 
-        // 3. Background Auto-Connect on the SAME local network (when phone opens without QR/PIN):
-        if (isSameNetwork && _settings.AutoApproveSameNetwork)
-        {
-            var autoAuth = _authService.AutoApproveLocalDevice(
-                request.DeviceName,
-                request.DeviceModel ?? "Unknown",
-                ipAddress);
+        // 5. Remote users / Scanned QR:
+        // REQUIRE APPROVAL FROM SERVER SIDE DASHBOARD AND NOTIFICATION PANEL!
+        _logger.LogInformation("Requesting server dashboard approval for remote device {Name} at {IP} (Tunnel={Tunnel})",
+            request.DeviceName, ipAddress, isViaTunnel);
 
-            _logger.LogInformation("Auto-approved client '{Name}' on same local network ({IP})",
-                request.DeviceName, ipAddress);
-            return Ok(ApiResponse<AuthResponse>.Ok(autoAuth, "Connected automatically on local network"));
-        }
-
-        // 4. Fallback to manual approval dialog flow
         var result = await _authService.RequestApprovalAsync(
             request.DeviceName,
             request.DeviceModel ?? "Unknown",
-            ipAddress);
+            ipAddress,
+            connectedViaTunnel: isViaTunnel);
 
         if (result != null)
         {
-            _logger.LogInformation("Device approved and paired: {Name}", request.DeviceName);
-            return Ok(ApiResponse<AuthResponse>.Ok(result, "Connection approved"));
+            _logger.LogInformation("Device approved by PC admin: {Name} (Tunnel={Tunnel})",
+                request.DeviceName, isViaTunnel);
+            return Ok(ApiResponse<AuthResponse>.Ok(result, "Connected successfully after admin approval"));
         }
 
         // Denied or timed out
-        _logger.LogWarning("Device denied or timed out: {Name}", request.DeviceName);
-        return StatusCode(403, ApiResponse<object>.Fail("Connection denied or timed out. Please try again."));
+        _logger.LogWarning("Device denied or timed out by PC admin: {Name}", request.DeviceName);
+        return StatusCode(403, ApiResponse<object>.Fail("Connection request was denied or timed out on the PC server."));
     }
 
     /// <summary>

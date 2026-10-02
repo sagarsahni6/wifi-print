@@ -78,11 +78,6 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
-    // PDF Viewer (for Document Preview)
-    implementation("io.github.grizzi91:bouquet:1.1.2")
-
-    // SignalR client for real-time updates
-    implementation("com.microsoft.signalr:signalr:7.0.0")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.5.0")

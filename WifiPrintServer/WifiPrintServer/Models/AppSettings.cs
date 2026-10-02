@@ -55,6 +55,37 @@ public class AppSettings
     public string CurrentConnectionPin { get; set; } = GeneratePin();
 
     /// <summary>
+    /// When true, starts a Cloudflare Quick Tunnel so phones can print from any network worldwide.
+    /// No Cloudflare account needed — uses free ephemeral tunnels.
+    /// </summary>
+    public bool EnableCloudRelay { get; set; } = false;
+
+    /// <summary>
+    /// Optional permanent public URL, DDNS, or Cloudflare Tunnel domain (e.g. https://print.yourdomain.com).
+    /// If set, this fixed URL is embedded in the permanent QR code so paper-printed QR codes work forever.
+    /// </summary>
+    public string? CustomPublicUrl { get; set; }
+
+    /// <summary>
+    /// How long (in minutes) a device session lasts after pairing.
+    /// After this time, the device must re-pair. Prevents indefinite remote access.
+    /// 0 = unlimited (no expiry).
+    /// </summary>
+    public int SessionDurationMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum number of print jobs a single device can submit per session.
+    /// 0 = unlimited.
+    /// </summary>
+    public int MaxPrintsPerSession { get; set; } = 10;
+
+    /// <summary>
+    /// Minimum seconds between print jobs from the same device.
+    /// Prevents rapid-fire spam printing. 0 = no cooldown.
+    /// </summary>
+    public int PrintCooldownSeconds { get; set; } = 30;
+
+    /// <summary>
     /// Generates a random 6-digit numeric PIN.
     /// </summary>
     public static string GeneratePin()

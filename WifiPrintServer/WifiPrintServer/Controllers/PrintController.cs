@@ -52,16 +52,55 @@ public class PrintController : ControllerBase
         if (_authService.IsDeviceBlocked(deviceId))
             return StatusCode(403, ApiResponse<object>.Fail("Device is blocked by the server administrator"));
 
+        // Session & rate limiting checks
+        var device = _authService.GetDeviceById(deviceId);
+        if (device == null)
+            return Unauthorized(ApiResponse<object>.Fail("Device not found. Please re-pair."));
+
+        var appSettings = Program.Settings;
+
+        // Rate limiting ONLY applies to remote/tunnel devices.
+        // Same-network users print freely without restrictions.
+        if (device.ConnectedViaTunnel)
+        {
+            // Check session expiry
+            if (device.IsSessionExpired(appSettings.SessionDurationMinutes))
+            {
+                var mins = appSettings.SessionDurationMinutes;
+                _logger.LogWarning("Print rejected for device {Id}: session expired after {Mins} minutes", deviceId, mins);
+                return StatusCode(403, ApiResponse<object>.Fail(
+                    $"Your session has expired (limit: {mins} minutes). Please scan the QR code again to reconnect."));
+            }
+
+            // Check max prints per session
+            if (device.HasExceededPrintLimit(appSettings.MaxPrintsPerSession))
+            {
+                var max = appSettings.MaxPrintsPerSession;
+                _logger.LogWarning("Print rejected for device {Id}: exceeded {Max} prints per session", deviceId, max);
+                return StatusCode(429, ApiResponse<object>.Fail(
+                    $"Print limit reached ({max} prints per session). Please wait for a new session or ask the server admin."));
+            }
+
+            // Check cooldown between prints
+            if (device.IsInCooldown(appSettings.PrintCooldownSeconds))
+            {
+                var remaining = appSettings.PrintCooldownSeconds - (int)(DateTime.UtcNow - device.LastPrintAt!.Value).TotalSeconds;
+                _logger.LogWarning("Print rejected for device {Id}: cooldown ({Remaining}s left)", deviceId, remaining);
+                return StatusCode(429, ApiResponse<object>.Fail(
+                    $"Please wait {remaining} seconds before sending another print job."));
+            }
+        }
+
         if (file == null || file.Length == 0)
             return BadRequest(ApiResponse<object>.Fail("No file uploaded"));
 
         // Parse print settings
-        var settings = new PrintSettings();
+        var printSettings = new PrintSettings();
         if (!string.IsNullOrEmpty(settingsJson))
         {
             try
             {
-                settings = System.Text.Json.JsonSerializer.Deserialize<PrintSettings>(settingsJson,
+                printSettings = System.Text.Json.JsonSerializer.Deserialize<PrintSettings>(settingsJson,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? new PrintSettings();
             }
@@ -73,9 +112,9 @@ public class PrintController : ControllerBase
 
         // Determine printer
         string printerName;
-        if (!string.IsNullOrEmpty(settings.SelectedPrinterId))
+        if (!string.IsNullOrEmpty(printSettings.SelectedPrinterId))
         {
-            var printer = _printerService.GetPrinter(settings.SelectedPrinterId);
+            var printer = _printerService.GetPrinter(printSettings.SelectedPrinterId);
             printerName = printer?.Name ?? _printerService.GetDefaultPrinter()?.Name ?? "";
         }
         else
@@ -102,7 +141,7 @@ public class PrintController : ControllerBase
         var finalPdfPath = convertedPath ?? filePath;
         if (Path.GetExtension(finalPdfPath).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            var pdfValidation = _printerService.ValidatePdf(finalPdfPath, settings.PdfPassword);
+            var pdfValidation = _printerService.ValidatePdf(finalPdfPath, printSettings.PdfPassword);
             if (pdfValidation.RequiresPassword)
             {
                 _logger.LogWarning("Print rejected: file {File} requires password", file.FileName);
@@ -124,7 +163,7 @@ public class PrintController : ControllerBase
             FileType = FileProcessingService.GetFileType(file.FileName),
             FilePath = filePath,
             ConvertedFilePath = convertedPath != filePath ? convertedPath : null,
-            Settings = settings,
+            Settings = printSettings,
             PrinterName = printerName,
             DeviceId = deviceId,
             DeviceName = deviceName,
@@ -134,8 +173,11 @@ public class PrintController : ControllerBase
 
         var jobId = _queueManager.EnqueueJob(job);
 
-        _logger.LogInformation("Print job created: {JobId} for {File} (Encrypted={Encrypted})",
-            jobId, file.FileName, !string.IsNullOrEmpty(settings.PdfPassword));
+        // Record print for rate limiting
+        device.RecordPrint();
+
+        _logger.LogInformation("Print job created: {JobId} for {File} (Encrypted={Encrypted}, SessionPrints={Count})",
+            jobId, file.FileName, !string.IsNullOrEmpty(printSettings.PdfPassword), device.SessionPrintCount);
 
         return Ok(ApiResponse<PrintJobResponse>.Ok(new PrintJobResponse
         {

@@ -25,6 +25,7 @@ public partial class Program
     public static StatusBroadcaster? Broadcaster { get; private set; }
     public static PrinterService? PrinterServiceInstance { get; private set; }
     public static X509Certificate2? ServerCertificate { get; private set; }
+    public static TunnelService? TunnelServiceInstance { get; private set; }
 
     /// <summary>
     /// Initializes application settings.
@@ -72,6 +73,7 @@ public partial class Program
         builder.Services.AddSingleton<FileProcessingService>();
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddSingleton<StatusBroadcaster>();
+        builder.Services.AddSingleton<TunnelService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<PrintQueueManager>());
 
         // Add controllers + SignalR
@@ -168,6 +170,24 @@ public partial class Program
         AuthServiceInstance = WebApp.Services.GetRequiredService<AuthService>();
         Broadcaster = WebApp.Services.GetRequiredService<StatusBroadcaster>();
         PrinterServiceInstance = WebApp.Services.GetRequiredService<PrinterService>();
+        TunnelServiceInstance = WebApp.Services.GetRequiredService<TunnelService>();
+
+        // Auto-start cloud relay tunnel if enabled
+        if (Settings.EnableCloudRelay)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await TunnelServiceInstance.StartAsync(Settings.ServerPort);
+                }
+                catch (Exception ex)
+                {
+                    var logger = WebApp.Services.GetRequiredService<ILogger<TunnelService>>();
+                    logger.LogError(ex, "Failed to start cloud relay tunnel");
+                }
+            });
+        }
 
         // Wire up queue events to SignalR broadcasts
         QueueManager.OnJobStatusChanged += async update =>

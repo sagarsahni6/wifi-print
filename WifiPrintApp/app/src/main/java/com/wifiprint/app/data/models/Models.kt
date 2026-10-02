@@ -17,7 +17,8 @@ data class ServerInfo(
     val isPaired: Boolean = false,
     val lastConnected: Long = System.currentTimeMillis(),
     val lastAuthCheckAt: Long? = null,
-    val connectionHealth: String = "Unknown"
+    val connectionHealth: String = "Unknown",
+    val tunnelUrl: String? = null
 ) {
     @androidx.room.Ignore
     var isSameNetwork: Boolean = true

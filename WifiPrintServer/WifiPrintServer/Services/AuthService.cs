@@ -40,22 +40,27 @@ public class AuthService
 
     /// <summary>
     /// Called when a phone sends a connection request.
-    /// Creates a pending approval and waits (up to 60s) for the PC user to Allow/Deny.
+    /// Creates a pending approval and waits (up to 90s) for the PC user to Allow/Deny.
     /// Returns AuthResponse on approval, null on denial/timeout.
     /// </summary>
-    public async Task<AuthResponse?> RequestApprovalAsync(string deviceName, string deviceModel, string ipAddress)
+    public async Task<AuthResponse?> RequestApprovalAsync(
+        string deviceName,
+        string deviceModel,
+        string ipAddress,
+        bool connectedViaTunnel = false)
     {
         var approval = new PendingApproval
         {
             DeviceName = deviceName,
             DeviceModel = deviceModel,
-            IpAddress = ipAddress
+            IpAddress = ipAddress,
+            ConnectedViaTunnel = connectedViaTunnel
         };
 
         _pendingApprovals[approval.Id] = approval;
         _stateStore.UpsertApproval(approval, "Pending");
-        _logger.LogInformation("Connection request from {Name} ({Model}) at {Ip}",
-            deviceName, deviceModel, ipAddress);
+        _logger.LogInformation("Connection request from {Name} ({Model}) at {Ip} (tunnel={Tunnel})",
+            deviceName, deviceModel, ipAddress, connectedViaTunnel);
 
         // Notify the WPF UI to show the approval popup
         if (OnApprovalRequested != null)
@@ -70,8 +75,8 @@ public class AuthService
 
         try
         {
-            // Wait up to 60 seconds for the user to respond
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            // Wait up to 90 seconds for the PC user to respond
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
             var result = await approval.CompletionSource.Task.WaitAsync(cts.Token);
 
             _pendingApprovals.TryRemove(approval.Id, out _);
@@ -83,7 +88,9 @@ public class AuthService
                 {
                     Name = deviceName,
                     Model = deviceModel,
-                    IpAddress = ipAddress
+                    IpAddress = ipAddress,
+                    ConnectedViaTunnel = connectedViaTunnel,
+                    SessionStartedAt = DateTime.UtcNow
                 };
 
                 var token = GenerateJwtToken(device.Id, device.Name);
@@ -92,7 +99,8 @@ public class AuthService
                 SavePairedDevices();
                 _stateStore.UpsertApproval(approval, "Approved");
 
-                _logger.LogInformation("Device approved: {Name} ({Id})", device.Name, device.Id);
+                _logger.LogInformation("Device approved: {Name} ({Id}) (tunnel={Tunnel})",
+                    device.Name, device.Id, connectedViaTunnel);
                 OnDevicePaired?.Invoke(device);
 
                 return new AuthResponse
@@ -120,16 +128,18 @@ public class AuthService
     }
 
     /// <summary>
-    /// Automatically approves and pairs a device that is on the same local Wi-Fi subnet.
-    /// Eliminates manual confirmation prompts for trusted local devices.
+    /// Automatically approves and pairs a device that is on the same local Wi-Fi subnet,
+    /// or a device that provided valid QR/PIN credentials.
+    /// Eliminates manual confirmation prompts for trusted devices.
     /// </summary>
-    public AuthResponse AutoApproveLocalDevice(string deviceName, string deviceModel, string ipAddress)
+    public AuthResponse AutoApproveLocalDevice(string deviceName, string deviceModel, string ipAddress, bool connectedViaTunnel = false)
     {
         var device = new DeviceInfo
         {
             Name = deviceName,
             Model = deviceModel,
-            IpAddress = ipAddress
+            IpAddress = ipAddress,
+            ConnectedViaTunnel = connectedViaTunnel
         };
 
         var token = GenerateJwtToken(device.Id, device.Name);
@@ -137,7 +147,8 @@ public class AuthService
         _pairedDevices[device.Id] = device;
         SavePairedDevices();
 
-        _logger.LogInformation("Auto-approved local device: {Name} ({Id}) at {Ip}", device.Name, device.Id, ipAddress);
+        _logger.LogInformation("Auto-approved device: {Name} ({Id}) at {Ip} (tunnel={Tunnel})",
+            device.Name, device.Id, ipAddress, connectedViaTunnel);
         OnDevicePaired?.Invoke(device);
 
         return new AuthResponse
@@ -356,6 +367,7 @@ public class PendingApproval
     public string DeviceName { get; set; } = string.Empty;
     public string DeviceModel { get; set; } = string.Empty;
     public string IpAddress { get; set; } = string.Empty;
+    public bool ConnectedViaTunnel { get; set; } = false;
     public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
     public TaskCompletionSource<bool> CompletionSource { get; } = new();
 }

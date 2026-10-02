@@ -144,6 +144,54 @@ public class DiscoveryService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the SSID of the WiFi network this PC is currently connected to.
+    /// Uses 'netsh wlan show interfaces' and parses the output.
+    /// Returns empty string if not connected to WiFi or detection fails.
+    /// </summary>
+    public static string GetCurrentWifiSsid()
+    {
+        try
+        {
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "netsh",
+                    Arguments = "wlan show interfaces",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            process.Start();
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(3000);
+
+            // Parse "    SSID                   : MyNetworkName"
+            foreach (var line in output.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                // Match "SSID" but NOT "BSSID"
+                if (trimmed.StartsWith("SSID", StringComparison.OrdinalIgnoreCase) &&
+                    !trimmed.StartsWith("BSSID", StringComparison.OrdinalIgnoreCase))
+                {
+                    var colonIndex = trimmed.IndexOf(':');
+                    if (colonIndex >= 0 && colonIndex + 1 < trimmed.Length)
+                    {
+                        return trimmed[(colonIndex + 1)..].Trim();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Silently fail — WiFi detection is optional
+        }
+
+        return "";
+    }
+
     public void Dispose()
     {
         Stop();

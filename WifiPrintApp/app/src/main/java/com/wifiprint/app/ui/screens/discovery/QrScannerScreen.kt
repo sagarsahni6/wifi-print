@@ -42,18 +42,21 @@ import java.util.concurrent.Executors
 
 /**
  * QR code data parsed from the server's connection QR.
+ * Includes server IP, port, certificate fingerprint, QR security token, and optional Cloud Relay tunnel URL.
  */
 data class QrConnectionData(
     val ip: String,
     val port: Int,
     val name: String,
     val certFingerprint: String,
-    val qrToken: String? = null
+    val qrToken: String? = null,
+    val tunnelUrl: String? = null
 )
 
 /**
  * QR Scanner screen — opens the camera, detects QR codes via ML Kit,
- * and prompts for the 6-digit server PIN to complete connection.
+ * and automatically connects using the embedded QR security token.
+ * If the server requires additional PIN verification, prompts for PIN.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +88,19 @@ fun QrScannerScreen(
 
     var scannedQrData by remember { mutableStateOf<QrConnectionData?>(null) }
     var pinInput by remember { mutableStateOf("") }
+
+    // When QR is scanned, automatically initiate connection using QR security token
+    LaunchedEffect(scannedQrData) {
+        val qr = scannedQrData ?: return@LaunchedEffect
+        connectViewModel.connectFromQr(
+            ip = qr.ip,
+            port = qr.port,
+            name = qr.name,
+            certFingerprint = qr.certFingerprint,
+            qrToken = qr.qrToken,
+            tunnelUrl = qr.tunnelUrl
+        )
+    }
 
     LaunchedEffect(connectState.isConnected) {
         if (connectState.isConnected) {
@@ -227,155 +243,302 @@ fun QrScannerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "📷 Point at the QR code on your PC",
+                            "📷 Point at the QR code",
                             color = Color.White, fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "Scan QR, then enter the PIN shown on your PC screen",
+                            "Scan the QR code to request connection to the PC server",
                             color = Color.White.copy(alpha = 0.7f),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
 
-                // PIN Entry Dialog immediately after scanning QR
+                // Connection Feedback and PIN Dialog
                 if (scannedQrData != null) {
                     val server = scannedQrData!!
-                    AlertDialog(
-                        onDismissRequest = {
-                            if (!connectState.isConnecting) {
+
+                    if (connectState.isConnecting) {
+                        // 1. Connecting / Waiting for Approval state dialog
+                        AlertDialog(
+                            onDismissRequest = {
                                 scannedQrData = null
-                                pinInput = ""
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                Icons.Filled.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        },
-                        title = {
-                            Text(
-                                text = "Enter Server PIN",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            )
-                        },
-                        text = {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(8.dp),
+                                connectViewModel.dismissPinPrompt()
+                            },
+                            icon = {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(36.dp),
+                                    strokeWidth = 3.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            title = {
+                                Text(
+                                    text = "Waiting for Server Approval...",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            text = {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text(
-                                            text = "🖥 " + server.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = "${server.ip}:${server.port}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    }
-                                }
-
-                                Spacer(Modifier.height(14.dp))
-                                Text(
-                                    text = "Enter the 6-digit PIN displayed on your PC server dashboard:",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.height(16.dp))
-
-                                OutlinedTextField(
-                                    value = pinInput,
-                                    onValueChange = { input ->
-                                        if (input.length <= 6 && input.all { it.isDigit() }) {
-                                            pinInput = input
+                                        Column(
+                                            modifier = Modifier.padding(10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "🖥 " + server.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            if (!server.tunnelUrl.isNullOrBlank()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "☁ Cloud Relay • Remote User",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = "${server.ip}:${server.port}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                                )
+                                            }
                                         }
-                                    },
-                                    label = { Text("6-Digit PIN") },
-                                    placeholder = { Text("123456") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textStyle = LocalTextStyle.current.copy(
-                                        textAlign = TextAlign.Center,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 24.sp,
-                                        letterSpacing = 4.sp
-                                    ),
-                                    isError = connectState.error != null
-                                )
-
-                                if (connectState.error != null) {
-                                    Spacer(Modifier.height(8.dp))
+                                    }
+                                    Spacer(Modifier.height(14.dp))
                                     Text(
-                                        text = connectState.error!!,
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = "Approval request sent to PC server.\nPlease check the PC dashboard or notification popup and click 'Approve'.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center
                                     )
                                 }
+                            },
+                            confirmButton = {},
+                            dismissButton = {
+                                TextButton(
+                                    onClick = {
+                                        scannedQrData = null
+                                        connectViewModel.dismissPinPrompt()
+                                    }
+                                ) {
+                                    Text("Cancel")
+                                }
                             }
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    if (pinInput.length == 6) {
+                        )
+                    } else if (connectState.requiresPinPrompt) {
+                        // 2. PIN Entry Dialog (when server explicitly requires PIN verification)
+                        AlertDialog(
+                            onDismissRequest = {
+                                scannedQrData = null
+                                pinInput = ""
+                                connectViewModel.dismissPinPrompt()
+                            },
+                            icon = {
+                                Icon(
+                                    Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            },
+                            title = {
+                                Text(
+                                    text = "Enter Server PIN",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            text = {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "🖥 " + server.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            if (!server.tunnelUrl.isNullOrBlank()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "☁ Cloud Relay • Print from Anywhere",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = "${server.ip}:${server.port}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(14.dp))
+
+                                    Text(
+                                        text = "Enter the 6-digit PIN displayed on your PC server dashboard:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+
+                                    OutlinedTextField(
+                                        value = pinInput,
+                                        onValueChange = { input ->
+                                            if (input.length <= 6 && input.all { it.isDigit() }) {
+                                                pinInput = input
+                                            }
+                                        },
+                                        label = { Text("6-Digit PIN") },
+                                        placeholder = { Text("123456") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = LocalTextStyle.current.copy(
+                                            textAlign = TextAlign.Center,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 24.sp,
+                                            letterSpacing = 4.sp
+                                        ),
+                                        isError = connectState.error != null
+                                    )
+
+                                    if (connectState.error != null) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            text = connectState.error!!,
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (pinInput.length == 6) {
+                                            connectViewModel.submitPin(pinInput)
+                                        }
+                                    },
+                                    enabled = pinInput.length == 6 && !connectState.isConnecting,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Connect")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = {
+                                        scannedQrData = null
+                                        pinInput = ""
+                                        connectViewModel.dismissPinPrompt()
+                                    }
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    } else if (connectState.error != null) {
+                        // 3. Error dialog with retry/rescan options
+                        AlertDialog(
+                            onDismissRequest = {
+                                scannedQrData = null
+                                pinInput = ""
+                                connectViewModel.dismissPinPrompt()
+                            },
+                            title = {
+                                Text(
+                                    text = "Connection Failed",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
+                            },
+                            text = {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = connectState.error ?: "Unable to connect to server.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
                                         connectViewModel.connectFromQr(
                                             ip = server.ip,
                                             port = server.port,
                                             name = server.name,
                                             certFingerprint = server.certFingerprint,
                                             qrToken = server.qrToken,
-                                            pin = pinInput
+                                            tunnelUrl = server.tunnelUrl
                                         )
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Retry")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = {
+                                        scannedQrData = null
+                                        pinInput = ""
+                                        connectViewModel.dismissPinPrompt()
                                     }
-                                },
-                                enabled = pinInput.length == 6 && !connectState.isConnecting,
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                if (connectState.isConnecting) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Verifying...")
-                                } else {
-                                    Text("Connect")
+                                ) {
+                                    Text("Rescan")
                                 }
                             }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    scannedQrData = null
-                                    pinInput = ""
-                                },
-                                enabled = !connectState.isConnecting
-                            ) {
-                                Text("Rescan")
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -383,21 +546,25 @@ fun QrScannerScreen(
 }
 
 /**
- * Parses the QR code JSON payload: { "ip": "...", "port": ..., "name": "...", "cert": "..." }
+ * Parses the QR code JSON payload:
+ * { "ip": "...", "port": ..., "name": "...", "cert": "...", "token": "...", "tunnel": "..." }
  */
 private fun parseQrPayload(raw: String): QrConnectionData? {
     return try {
         val json = JSONObject(raw)
         val token = json.optString("token").ifBlank { json.optString("qrToken").ifBlank { null } }
+        val tunnel = json.optString("tunnel").ifBlank { json.optString("tunnelUrl").ifBlank { null } }
         QrConnectionData(
             ip = json.getString("ip"),
             port = json.getInt("port"),
             name = json.optString("name", "WiFi Print Server"),
             certFingerprint = json.optString("cert", ""),
-            qrToken = token
+            qrToken = token,
+            tunnelUrl = tunnel
         )
     } catch (e: Exception) {
         Log.e("QrScanner", "Failed to parse QR payload: $raw", e)
         null
     }
 }
+
