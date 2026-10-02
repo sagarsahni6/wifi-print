@@ -58,7 +58,7 @@ public class AppSettings
     /// When true, starts a Cloudflare Quick Tunnel so phones can print from any network worldwide.
     /// No Cloudflare account needed — uses free ephemeral tunnels.
     /// </summary>
-    public bool EnableCloudRelay { get; set; } = false;
+    public bool EnableCloudRelay { get; set; } = true;
 
     /// <summary>
     /// Optional permanent public URL, DDNS, or Cloudflare Tunnel domain (e.g. https://print.yourdomain.com).

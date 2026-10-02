@@ -129,6 +129,17 @@ public partial class MainWindow : Window
             _eventWiringTimer.Stop();
             AppendLog($"[{DateTime.Now:HH:mm:ss}] ✓ Server ready — all services connected");
 
+            // Wire up cloud relay tunnel events
+            if (Program.TunnelServiceInstance != null)
+            {
+                StartCloudRelayEventWiring();
+
+                if (Program.Settings.EnableCloudRelay && !Program.TunnelServiceInstance.IsActive && !Program.TunnelServiceInstance.IsStarting)
+                {
+                    StartCloudRelay();
+                }
+            }
+
             // Generate the connection QR code for the dashboard
             GenerateConnectionQrCode();
         }
@@ -518,9 +529,13 @@ public partial class MainWindow : Window
         try
         {
             var ip = DiscoveryService.GetLocalIpAddress();
-            Clipboard.SetText($"https://{ip}:{Program.Settings.ServerPort}");
-            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📋 Server address copied to clipboard: https://{ip}:{Program.Settings.ServerPort}");
-            App.ShowTrayNotification("Copied to Clipboard", $"https://{ip}:{Program.Settings.ServerPort}", System.Windows.Forms.ToolTipIcon.Info);
+            string urlToCopy = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : (Program.TunnelServiceInstance?.PublicUrl ?? $"https://{ip}:{Program.Settings.ServerPort}");
+
+            Clipboard.SetText(urlToCopy);
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📋 Server address copied to clipboard: {urlToCopy}");
+            App.ShowTrayNotification("Copied to Clipboard", urlToCopy, System.Windows.Forms.ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
@@ -580,21 +595,29 @@ public partial class MainWindow : Window
             var name = Program.Settings.ServerName;
             var cert = Program.ServerCertificate;
 
-            // Only use permanent CustomPublicUrl for the QR payload so printed QR never breaks
+            // For the ON-SCREEN QR: use the live ephemeral tunnel URL so remote users can connect.
+            // Priority: CustomPublicUrl (permanent) > live TunnelService URL (ephemeral) > null (local only)
             string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
                 ? Program.Settings.CustomPublicUrl.Trim()
-                : null;
+                : Program.TunnelServiceInstance?.PublicUrl;
 
             var qrImage = QrCodeService.GenerateConnectionQrCode(
                 ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
             QrCodeImage.Source = qrImage;
 
             if (!string.IsNullOrEmpty(tunnelUrl))
-                QrInfoText.Text = $"☁ {tunnelUrl}";
+            {
+                var isEphemeral = string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl);
+                QrInfoText.Text = isEphemeral
+                    ? $"☁ {tunnelUrl} (live — changes on restart)"
+                    : $"☁ {tunnelUrl}";
+            }
             else
-                QrInfoText.Text = $"{ip}:{port}";
+            {
+                QrInfoText.Text = $"{ip}:{port} (local network only)";
+            }
 
-            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready (Permanent — safe for paper printing)");
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready{(string.IsNullOrEmpty(tunnelUrl) ? " (local only)" : $" (tunnel: {tunnelUrl})")}");
         }
         catch (Exception ex)
         {
@@ -610,6 +633,27 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Warn if no permanent CustomPublicUrl is set — printed QR with ephemeral URL will break
+            bool hasCustomUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl);
+            bool tunnelEnabled = Program.Settings.EnableCloudRelay;
+
+            if (tunnelEnabled && !hasCustomUrl)
+            {
+                var result = MessageBox.Show(
+                    "⚠ Cloud Relay is enabled but no Custom Public URL is set.\n\n" +
+                    "The printed QR code will only work for LOCAL network users.\n" +
+                    "Remote users won't be able to connect via the printed QR because " +
+                    "the ephemeral tunnel URL changes every time the server restarts.\n\n" +
+                    "To enable remote access via printed QR, set a Custom Public URL in Settings " +
+                    "(e.g., using a Cloudflare named tunnel or your own domain).\n\n" +
+                    "Print anyway for local users only?",
+                    "Printed QR Code Warning",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result != MessageBoxResult.Yes) return;
+            }
+
             var printDlg = new PrintDialog();
             if (printDlg.ShowDialog() != true) return;
 
@@ -776,17 +820,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Starts the cloud relay tunnel and wires up status events.
+    /// Wires up tunnel status events to update the UI and QR code.
+    /// Safe to call multiple times — uses a flag to prevent duplicate wiring.
     /// </summary>
-    private void StartCloudRelay()
+    private bool _tunnelEventsWired = false;
+    private void StartCloudRelayEventWiring()
     {
-        if (Program.TunnelServiceInstance == null) return;
+        if (_tunnelEventsWired || Program.TunnelServiceInstance == null) return;
+        _tunnelEventsWired = true;
+
+        Program.TunnelServiceInstance.OnLog += msg =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] {msg}");
+            });
+        };
 
         Program.TunnelServiceInstance.OnTunnelReady += url =>
         {
             Dispatcher.BeginInvoke(() =>
             {
                 UpdateTunnelStatus(url);
+                // Re-generate the on-screen QR to include the live tunnel URL
+                GenerateConnectionQrCode();
                 AppendLog($"[{DateTime.Now:HH:mm:ss}] 🌐 Cloud Relay active: {url}");
                 App.ShowTrayNotification("☁ Cloud Relay Active",
                     $"Print from anywhere: {url}", System.Windows.Forms.ToolTipIcon.Info);
@@ -798,9 +855,29 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(() =>
             {
                 UpdateTunnelStatus(null);
+                // Re-generate QR without the tunnel URL
+                GenerateConnectionQrCode();
                 AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Cloud Relay stopped: {reason}");
             });
         };
+
+        // If the tunnel is already active (startup race), update UI immediately
+        if (Program.TunnelServiceInstance.IsActive && !string.IsNullOrEmpty(Program.TunnelServiceInstance.PublicUrl))
+        {
+            UpdateTunnelStatus(Program.TunnelServiceInstance.PublicUrl);
+            GenerateConnectionQrCode();
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 🌐 Cloud Relay already active: {Program.TunnelServiceInstance.PublicUrl}");
+        }
+    }
+
+    /// <summary>
+    /// Starts the cloud relay tunnel and wires up status events.
+    /// </summary>
+    private void StartCloudRelay()
+    {
+        if (Program.TunnelServiceInstance == null) return;
+
+        StartCloudRelayEventWiring();
 
         _ = Task.Run(async () =>
         {

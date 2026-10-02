@@ -49,6 +49,9 @@ public class TunnelService : IDisposable
     /// <summary>Fires when the tunnel stops or encounters an error.</summary>
     public event Action<string>? OnTunnelStopped;
 
+    /// <summary>Fires log messages for UI or console diagnostics.</summary>
+    public event Action<string>? OnLog;
+
     public TunnelService(ILogger<TunnelService> logger)
     {
         _logger = logger;
@@ -65,15 +68,20 @@ public class TunnelService : IDisposable
 
         try
         {
+            OnLog?.Invoke("⏳ Starting Cloud Relay tunnel (Cloudflare)...");
+
             // 1. Ensure cloudflared.exe exists
             if (!File.Exists(CloudflaredExePath))
             {
                 _logger.LogInformation("Downloading cloudflared.exe...");
+                OnLog?.Invoke("⬇ Downloading cloudflared binary (one-time setup)...");
                 await DownloadCloudflaredAsync();
+                OnLog?.Invoke("✓ cloudflared binary downloaded successfully.");
             }
 
             // 2. Start the tunnel process
             _logger.LogInformation("Starting Cloudflare tunnel for port {Port}...", localPort);
+            OnLog?.Invoke($"🔄 Connecting tunnel for port {localPort} to Cloudflare edge...");
 
             _tunnelProcess = new Process
             {
@@ -95,7 +103,9 @@ public class TunnelService : IDisposable
                     _tunnelProcess?.ExitCode);
                 PublicUrl = null;
                 IsStarting = false;
-                OnTunnelStopped?.Invoke("Tunnel process exited");
+                var reason = $"Tunnel process exited (code {_tunnelProcess?.ExitCode})";
+                OnTunnelStopped?.Invoke(reason);
+                OnLog?.Invoke($"⚠ {reason}");
             };
 
             _tunnelProcess.Start();
@@ -110,6 +120,7 @@ public class TunnelService : IDisposable
             _logger.LogError(ex, "Failed to start Cloudflare tunnel");
             IsStarting = false;
             OnTunnelStopped?.Invoke($"Start failed: {ex.Message}");
+            OnLog?.Invoke($"⚠ Cloud Relay start failed: {ex.Message}");
         }
     }
 
@@ -159,8 +170,10 @@ public class TunnelService : IDisposable
             using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 
-            using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await response.Content.CopyToAsync(fileStream);
+            using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await response.Content.CopyToAsync(fileStream);
+            }
 
             // Atomic rename
             if (File.Exists(CloudflaredExePath))

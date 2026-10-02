@@ -21,6 +21,47 @@ public class ServerStateStore
     {
         using var db = _contextFactory.CreateDbContext();
         db.Database.EnsureCreated();
+
+        // Migrate any missing columns in the Devices table for databases created with earlier schema versions
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+            {
+                conn.Open();
+            }
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA table_info(Devices);";
+            var existingColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    existingColumns.Add(reader.GetString(1));
+                }
+            }
+
+            void AddColumnIfMissing(string columnName, string columnDef)
+            {
+                if (!existingColumns.Contains(columnName))
+                {
+                    using var alterCmd = conn.CreateCommand();
+                    alterCmd.CommandText = $"ALTER TABLE Devices ADD COLUMN {columnName} {columnDef};";
+                    alterCmd.ExecuteNonQuery();
+                    _logger.LogInformation("Added missing column {Column} to Devices table", columnName);
+                }
+            }
+
+            AddColumnIfMissing("ConnectedViaTunnel", "INTEGER NOT NULL DEFAULT 0");
+            AddColumnIfMissing("SessionStartedAt", "TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'");
+            AddColumnIfMissing("SessionPrintCount", "INTEGER NOT NULL DEFAULT 0");
+            AddColumnIfMissing("LastPrintAt", "TEXT NULL");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to migrate Devices table columns in SQLite");
+        }
     }
 
     public List<PrintJob> LoadJobs()
