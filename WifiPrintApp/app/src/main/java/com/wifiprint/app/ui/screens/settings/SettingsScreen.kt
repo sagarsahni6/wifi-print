@@ -25,8 +25,9 @@ import com.wifiprint.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
-    var darkMode by remember { mutableStateOf(false) }
+fun SettingsScreen(
+    onBack: () -> Unit = {}
+) {
     var notifications by remember { mutableStateOf(true) }
     var autoConnect by remember { mutableStateOf(true) }
     var highQualityPreview by remember { mutableStateOf(true) }
@@ -47,24 +48,34 @@ fun SettingsScreen() {
                         colors = listOf(GradientStart, GradientEnd)
                     )
                 )
-                .padding(horizontal = 20.dp, vertical = 32.dp)
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
             Column {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Settings",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-1).sp
-                    ),
-                    color = Color.White
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Customize your printing experience",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.75f)
-                )
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Column {
+                        Text(
+                            "Settings",
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = (-0.5).sp
+                            ),
+                            color = Color.White
+                        )
+                        Text(
+                            "Customize your printing and scanning experience",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                }
             }
         }
 
@@ -72,18 +83,6 @@ fun SettingsScreen() {
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ── Appearance ──────────────────────────────────────────
-            SettingsGroup(title = "Appearance", icon = Icons.Filled.Palette, color = Primary) {
-                SettingsToggleItem(
-                    icon = Icons.Filled.DarkMode,
-                    title = "Dark Mode",
-                    subtitle = "Switch to dark theme",
-                    checked = darkMode,
-                    onCheckedChange = { darkMode = it },
-                    iconTint = Secondary
-                )
-            }
-
             // ── Connection ──────────────────────────────────────────
             SettingsGroup(title = "Connection", icon = Icons.Filled.Wifi, color = Tertiary) {
                 SettingsToggleItem(
@@ -129,30 +128,6 @@ fun SettingsScreen() {
                 )
             }
 
-            // ── Security & Privacy ──────────────────────────────────
-            var biometricLock by remember { mutableStateOf(false) }
-            var verifyServerCert by remember { mutableStateOf(true) }
-
-            SettingsGroup(title = "Security & Privacy", icon = Icons.Filled.Security, color = Green400) {
-                SettingsToggleItem(
-                    icon = Icons.Filled.Fingerprint,
-                    title = "Biometric Lock",
-                    subtitle = "Require fingerprint or PIN to access print actions",
-                    checked = biometricLock,
-                    onCheckedChange = { biometricLock = it },
-                    iconTint = Green400
-                )
-                Divider(modifier = Modifier.padding(start = 52.dp), color = DividerColor)
-                SettingsToggleItem(
-                    icon = Icons.Filled.VerifiedUser,
-                    title = "Strict Server Verification",
-                    subtitle = "Verify server pairing tokens on every request",
-                    checked = verifyServerCert,
-                    onCheckedChange = { verifyServerCert = it },
-                    iconTint = Green400
-                )
-            }
-
             // ── About ───────────────────────────────────────────────
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -178,7 +153,7 @@ fun SettingsScreen() {
                             fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.height(14.dp))
-                    AboutInfoRow("App Name", "WiFi Print")
+                    AboutInfoRow("App Name", "SpoolDrop: Cloud Print & Scan")
                     AboutInfoRow("Version", "2.0.0")
                     AboutInfoRow("Build", "Release")
                     Spacer(Modifier.height(8.dp))
@@ -219,7 +194,7 @@ fun SettingsScreen() {
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "WiFi Print requires a companion server running on your Windows 10/11 PC. " +
+                        "SpoolDrop requires a companion server running on your Windows 10/11 PC. " +
                                 "Download it free from our website.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

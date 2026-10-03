@@ -38,7 +38,8 @@ class HomeViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "HomeViewModel"
-        private const val HEALTH_CHECK_INTERVAL_MS = 8000L  // Check every 8 seconds
+        private const val HEALTH_CHECK_INTERVAL_MS = 25000L  // Check every 25 seconds
+        private const val MAX_CONSECUTIVE_FAILURES = 3       // Require 3 consecutive failures (~75s) before disconnecting
     }
 
     private val networkMonitor = NetworkMonitor(application)
@@ -62,24 +63,33 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        // Observe WiFi state changes — instantly disconnect when WiFi drops
+        // Observe WiFi state changes — only disconnect if connected to a local LAN server without Cloud Relay
         viewModelScope.launch {
             networkMonitor.isWifiConnected.collect { wifiConnected ->
                 _uiState.update { it.copy(isWifiConnected = wifiConnected) }
                 if (!wifiConnected) {
-                    Log.d(TAG, "WiFi disconnected — marking as not connected")
-                    _uiState.update {
-                        it.copy(
-                            isConnected = false,
-                            serverName = "Not connected",
-                            connectionMessage = "WiFi disconnected. Reconnect to the same LAN to print."
-                        )
+                    val lastServer = repository.getLastPairedServer()
+                    val hasTunnel = !lastServer?.tunnelUrl.isNullOrBlank()
+                    // Cloud Relay connections work over mobile data / cellular — do NOT disconnect!
+                    if (!hasTunnel) {
+                        Log.d(TAG, "WiFi disconnected — local server unreachable")
+                        _uiState.update {
+                            it.copy(
+                                isConnected = false,
+                                serverName = "Not connected",
+                                connectionMessage = "WiFi disconnected. Reconnect to the same LAN to print."
+                            )
+                        }
+                    } else {
+                        Log.d(TAG, "WiFi disconnected, but server has Cloud Relay — maintaining connection")
                     }
                 } else {
-                    // WiFi came back — try reconnecting
+                    // WiFi came back — try reconnecting if not connected
                     Log.d(TAG, "WiFi reconnected — attempting auto-connect")
                     delay(1500) // Small delay for network to stabilize
-                    tryAutoConnect()
+                    if (!_uiState.value.isConnected) {
+                        tryAutoConnect()
+                    }
                 }
             }
         }
@@ -94,8 +104,9 @@ class HomeViewModel @Inject constructor(
         // Auto-reconnect on startup
         tryAutoConnect()
 
-        // Periodic health check — verifies server is still reachable
+        // Periodic health check — verifies server is still reachable with failure threshold
         viewModelScope.launch {
+            var consecutiveFailures = 0
             while (true) {
                 delay(HEALTH_CHECK_INTERVAL_MS)
                 if (_uiState.value.isConnected) {
@@ -104,15 +115,23 @@ class HomeViewModel @Inject constructor(
                     } catch (e: Exception) {
                         false
                     }
-                    if (!stillConnected) {
-                        Log.w(TAG, "Health check failed — server unreachable")
-                        _uiState.update {
-                            it.copy(
-                                isConnected = false,
-                                serverName = "Not connected"
-                            )
+                    if (stillConnected) {
+                        consecutiveFailures = 0
+                    } else {
+                        consecutiveFailures++
+                        Log.w(TAG, "Health check failed ($consecutiveFailures/$MAX_CONSECUTIVE_FAILURES)")
+                        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                            Log.w(TAG, "Health check failed $MAX_CONSECUTIVE_FAILURES times — server unreachable")
+                            _uiState.update {
+                                it.copy(
+                                    isConnected = false,
+                                    serverName = "Not connected"
+                                )
+                            }
                         }
                     }
+                } else {
+                    consecutiveFailures = 0
                 }
             }
         }
@@ -125,9 +144,14 @@ class HomeViewModel @Inject constructor(
      */
     fun tryAutoConnect() {
         viewModelScope.launch {
-            // Don't try if WiFi is not connected
-            if (!networkMonitor.checkWifiConnected()) {
-                Log.d(TAG, "WiFi not connected, skipping auto-connect")
+            val savedServer = repository.getLastPairedServer()
+            val hasTunnel = !savedServer?.tunnelUrl.isNullOrBlank()
+            val hasWifi = networkMonitor.checkWifiConnected()
+            val hasInternet = networkMonitor.checkInternetConnected()
+
+            // For local-only servers, WiFi is required. For Cloud Relay servers, any internet connection works!
+            if (!hasWifi && (!hasTunnel || !hasInternet)) {
+                Log.d(TAG, "Network not available for auto-connect (wifi=$hasWifi, tunnel=$hasTunnel, internet=$hasInternet)")
                 _uiState.update { it.copy(isConnecting = false, isConnected = false) }
                 return@launch
             }
@@ -135,7 +159,6 @@ class HomeViewModel @Inject constructor(
             _uiState.update { it.copy(isConnecting = true) }
 
             // 1. Try reconnecting to the last paired server if still reachable
-            val savedServer = repository.getLastPairedServer()
             if (savedServer != null) {
                 try {
                     repository.connectToServer(savedServer)

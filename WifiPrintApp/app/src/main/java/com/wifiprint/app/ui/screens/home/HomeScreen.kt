@@ -140,7 +140,7 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            "WiFi Print",
+                            "SpoolDrop",
                             style = MaterialTheme.typography.headlineLarge.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = (-1).sp
@@ -149,7 +149,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Print wirelessly from your device",
+                            "Cloud Print & Scan",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.75f)
                         )
@@ -281,8 +281,8 @@ fun HomeScreen(
         }
 
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-            // ── WiFi Warning Banner ─────────────────────────────────
-            if (!state.isWifiConnected) {
+            // ── WiFi Warning Banner (only if disconnected from all servers) ──
+            if (!state.isWifiConnected && !state.isConnected) {
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
@@ -301,7 +301,7 @@ fun HomeScreen(
                             Text("WiFi Not Connected",
                                 fontWeight = FontWeight.SemiBold,
                                 color = Orange400)
-                            Text("Connect to the same WiFi network as your PC to print",
+                            Text("Connect to the same WiFi network as your PC, or scan QR for Cloud Relay",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -310,7 +310,7 @@ fun HomeScreen(
             }
 
             // ── Connect to Server Section (when not connected) ──────
-            if (!state.isConnected && state.isWifiConnected) {
+            if (!state.isConnected) {
                 // Compact QR Scanner Button
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -737,7 +737,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Download & install the free WiFi Print Server on your Windows PC to start printing wirelessly.",
+                                "Download & install the free SpoolDrop Server on your Windows PC to start printing wirelessly.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center

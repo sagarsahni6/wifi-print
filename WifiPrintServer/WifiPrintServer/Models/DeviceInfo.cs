@@ -40,6 +40,7 @@ public class DeviceInfo
     public bool IsSessionExpired(int sessionDurationMinutes)
     {
         if (sessionDurationMinutes <= 0) return false; // 0 = unlimited
+        if (SessionStartedAt.Year < 2020) return false; // Guard against uninitialized/default timestamps
         return (DateTime.UtcNow - SessionStartedAt).TotalMinutes > sessionDurationMinutes;
     }
 

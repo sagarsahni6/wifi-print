@@ -73,14 +73,17 @@ class PrintRepository @Inject constructor(
         val normalizedTunnel = server.tunnelUrl?.trim()?.let {
             if (it.endsWith("/")) it else "$it/"
         }
-        val isSameSubnet = !server.ipAddress.isNullOrBlank() && NetworkMonitor(context).isSameLocalSubnet(server.ipAddress)
+        val isWifi = NetworkMonitor(context).checkWifiConnected()
+        val hasLocalIp = !server.ipAddress.isNullOrBlank()
+        val isSameSubnet = hasLocalIp && NetworkMonitor(context).isSameLocalSubnet(server.ipAddress)
 
-        currentBaseUrl = if (isTunnel && !isSameSubnet) {
-            normalizedTunnel!!
-        } else if (!server.ipAddress.isNullOrBlank()) {
+        // Always prioritize local Wi-Fi IP when on Wi-Fi or on same subnet for instant connection
+        currentBaseUrl = if ((isWifi || isSameSubnet) && hasLocalIp) {
             "https://${server.ipAddress}:${server.port}/"
         } else if (isTunnel) {
             normalizedTunnel!!
+        } else if (hasLocalIp) {
+            "https://${server.ipAddress}:${server.port}/"
         } else {
             "https://localhost:${server.port}/"
         }
@@ -468,17 +471,58 @@ class PrintRepository @Inject constructor(
         failureHealth: String,
         block: suspend (PrintApiService) -> Result<T>
     ): Result<T> {
+        val server = currentServer ?: serverDao.getLastPairedServer()
         return try {
             val api = ensureConnected()
             val result = block(api)
             if (result.isSuccess) {
                 persistObservedFingerprint()
                 updateCurrentServerHealth("Healthy")
+                result
             } else {
                 updateCurrentServerHealth(failureHealth)
+                result
             }
-            result
         } catch (e: Exception) {
+            // Dual-path auto-fallback: if tunnel failed (e.g. UnknownHostException), try local IP; if local IP failed, try tunnel
+            if (server != null && (
+                e is java.net.UnknownHostException ||
+                e is java.net.ConnectException ||
+                e is java.net.SocketTimeoutException ||
+                e is java.io.IOException
+            )) {
+                val currentIsTunnel = isTunnelUrl(currentBaseUrl)
+                val fallbackUrl = if (currentIsTunnel && !server.ipAddress.isNullOrBlank()) {
+                    "https://${server.ipAddress}:${server.port}/"
+                } else if (!currentIsTunnel && !server.tunnelUrl.isNullOrBlank()) {
+                    val t = server.tunnelUrl.trim()
+                    if (t.endsWith("/")) t else "$t/"
+                } else null
+
+                if (fallbackUrl != null && fallbackUrl != currentBaseUrl) {
+                    try {
+                        currentBaseUrl = fallbackUrl
+                        val useTunnelTls = isTunnelUrl(currentBaseUrl)
+                        currentApiService = createApiService(
+                            baseUrl = currentBaseUrl,
+                            token = server.token,
+                            pinnedFingerprint = if (useTunnelTls) null else server.certificateFingerprint,
+                            allowTrustOnFirstUse = useTunnelTls || server.certificateFingerprint.isNullOrBlank()
+                        ) { fingerprint ->
+                            observedServerFingerprint = fingerprint
+                        }
+                        val retryResult = block(currentApiService!!)
+                        if (retryResult.isSuccess) {
+                            persistObservedFingerprint()
+                            updateCurrentServerHealth("Healthy")
+                            return retryResult
+                        }
+                    } catch (_: Exception) {
+                        // Fallback also failed, report original exception
+                    }
+                }
+            }
+
             updateCurrentServerHealth("Unreachable")
             Result.failure(e)
         }

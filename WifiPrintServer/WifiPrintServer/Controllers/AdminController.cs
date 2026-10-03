@@ -62,7 +62,7 @@ public class AdminController : ControllerBase
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{serverName}} — WiFi Print Dashboard</title>
+    <title>{{serverName}} — SpoolDrop Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -374,7 +374,7 @@ public class AdminController : ControllerBase
                 <div class="brand-logo">🖨️</div>
                 <div>
                     <h1 class="brand-title">{{serverName}}</h1>
-                    <p class="brand-subtitle">WiFi Print Server Management</p>
+                    <p class="brand-subtitle">SpoolDrop Server Management</p>
                 </div>
             </div>
             <div class="status-pill">

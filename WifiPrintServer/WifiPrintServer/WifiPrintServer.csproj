@@ -11,8 +11,8 @@
     <AssemblyName>WifiPrintServer</AssemblyName>
     <RootNamespace>WifiPrintServer</RootNamespace>
     <Version>1.0.0</Version>
-    <Authors>WifiPrint Team</Authors>
-    <Description>Wi-Fi Print Server - Print from Android over Wi-Fi</Description>
+    <Authors>SpoolDrop Team</Authors>
+    <Description>SpoolDrop Server - Cloud Print &amp; Scan from Android</Description>
   </PropertyGroup>
 
   <ItemGroup>

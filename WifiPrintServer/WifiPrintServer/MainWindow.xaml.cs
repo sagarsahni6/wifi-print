@@ -79,7 +79,7 @@ public partial class MainWindow : Window
         };
         _cleanupTimer.Start();
 
-        AppendLog($"[{DateTime.Now:HH:mm:ss}] WiFi Print Server starting...");
+        AppendLog($"[{DateTime.Now:HH:mm:ss}] SpoolDrop Server starting...");
         AppendLog($"[{DateTime.Now:HH:mm:ss}] Listening on https://{ip}:{Program.Settings.ServerPort}");
     }
 
@@ -380,8 +380,37 @@ public partial class MainWindow : Window
     private void Window_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-
         var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
+        if (files != null && files.Length > 0)
+        {
+            ProcessDroppedFiles(files);
+        }
+    }
+
+    private void BrowsePrintFile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Documents or Images to Print",
+                Filter = "Supported Files (*.pdf;*.jpg;*.jpeg;*.png;*.txt)|*.pdf;*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.txt;*.log;*.csv|All Files (*.*)|*.*",
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() == true && dialog.FileNames.Length > 0)
+            {
+                ProcessDroppedFiles(dialog.FileNames);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open file picker: {ex.Message}");
+        }
+    }
+
+    private void ProcessDroppedFiles(string[] files)
+    {
         if (files == null || files.Length == 0 || Program.QueueManager == null) return;
 
         var defaultPrinter = Program.PrinterServiceInstance?.GetDefaultPrinter()?.Name
@@ -389,11 +418,12 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrEmpty(defaultPrinter))
         {
-            MessageBox.Show("No printer available on this system to print the dropped file(s).",
+            MessageBox.Show("No printer available on this system to print the file(s).",
                 "No Printers Found", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
+        int count = 0;
         foreach (var file in files)
         {
             if (!File.Exists(file)) continue;
@@ -417,11 +447,93 @@ public partial class MainWindow : Window
             };
 
             Program.QueueManager.EnqueueJob(job);
-            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📄 Drag & Drop print job: {job.OriginalFileName} -> {defaultPrinter}");
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] Document queued for printing: {job.OriginalFileName} -> {defaultPrinter}");
+            count++;
+        }
+
+        if (count > 0)
+        {
+            App.ShowTrayNotification("Document Queued", $"{count} document(s) sent to {defaultPrinter}.", System.Windows.Forms.ToolTipIcon.Info);
         }
 
         RefreshJobsList();
         RefreshDashboard();
+    }
+
+    private void SearchJobs_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (Program.QueueManager == null) return;
+        var query = SearchJobsInput?.Text?.Trim().ToLowerInvariant() ?? "";
+        var allJobs = Program.QueueManager.GetAllJobs();
+
+        if (string.IsNullOrEmpty(query))
+        {
+            JobsList.ItemsSource = allJobs;
+            JobsEmptyState.Visibility = allJobs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        else
+        {
+            var filtered = allJobs.Where(j =>
+                (j.OriginalFileName?.ToLowerInvariant().Contains(query) == true) ||
+                (j.PrinterName?.ToLowerInvariant().Contains(query) == true) ||
+                (j.Status.ToString().ToLowerInvariant().Contains(query) == true) ||
+                (j.Id?.ToLowerInvariant().Contains(query) == true)).ToList();
+            JobsList.ItemsSource = filtered;
+            JobsEmptyState.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void OpenUploadsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = Program.Settings.UploadDirectory;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open uploads folder: {ex.Message}");
+        }
+    }
+
+    private void OpenLogsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = Program.Settings.LogDirectory;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open logs folder: {ex.Message}");
+        }
+    }
+
+    private void OpenWebPortal_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var url = $"http://localhost:{Program.Settings.ServerPort}/";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open web portal: {ex.Message}");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -658,7 +770,7 @@ public partial class MainWindow : Window
             if (printDlg.ShowDialog() != true) return;
 
             var visual = CreatePrintableQrSign();
-            printDlg.PrintVisual(visual, "WiFi Print Server - Connection QR Code Sign");
+            printDlg.PrintVisual(visual, "SpoolDrop Server - Connection QR Code Sign");
             AppendLog($"[{DateTime.Now:HH:mm:ss}] 🖨 QR Code sign sent to printer");
             App.ShowTrayNotification("🖨 Printing QR Sign", "Permanent QR code sign sent to printer.", System.Windows.Forms.ToolTipIcon.Info);
         }
@@ -702,7 +814,7 @@ public partial class MainWindow : Window
         var headerPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
         var title = new TextBlock
         {
-            Text = "🖨 WiFi Print Station",
+            Text = "🖨 SpoolDrop Print Station",
             FontSize = 32,
             FontWeight = FontWeights.Bold,
             Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0F172A")!,
@@ -783,7 +895,7 @@ public partial class MainWindow : Window
         };
         var step2 = new TextBlock
         {
-            Text = "2. Open the WiFi Print app and tap 'Scan QR Code'",
+            Text = "2. Open the SpoolDrop app and tap 'Scan QR Code'",
             FontSize = 12.5,
             Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E293B")!,
             Margin = new Thickness(0, 0, 0, 6)

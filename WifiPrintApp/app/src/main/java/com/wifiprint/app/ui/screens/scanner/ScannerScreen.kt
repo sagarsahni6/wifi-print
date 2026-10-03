@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
@@ -56,18 +57,30 @@ import com.wifiprint.app.ui.theme.*
 @Composable
 fun ScannerScreen(
     onScanComplete: (String) -> Unit,
-    onBack: () -> Unit,
+    onBack: () -> Unit = {},
+    isServerConnected: Boolean = true,
+    serverName: String = "",
     viewModel: ScannerViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
 
-    // Handle saved PDF navigation
-    LaunchedEffect(state.savedPdfUri) {
-        state.savedPdfUri?.let { uri ->
-            onScanComplete(uri.toString())
-            viewModel.clearSavedPdf()
+    // Handle save PDF success (shows Toast with saved location, stays on screen)
+    LaunchedEffect(state.savePdfSuccessMessage) {
+        state.savePdfSuccessMessage?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            viewModel.clearSavePdfSuccess()
+        }
+    }
+
+    // Handle direct print success (sends to printer, then navigates to jobs queue)
+    LaunchedEffect(state.directPrintSuccess) {
+        if (state.directPrintSuccess) {
+            Toast.makeText(context, "Print job sent to printer!", Toast.LENGTH_SHORT).show()
+            val uriStr = state.savedPdfUri?.toString() ?: ""
+            onScanComplete(uriStr)
+            viewModel.clearDirectPrintSuccess()
         }
     }
 
@@ -171,202 +184,834 @@ fun ScannerScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Document Scanner", style = MaterialTheme.typography.titleMedium)
-                        if (state.scannedPages.isNotEmpty()) {
-                            Text("${state.scannedPages.size} page(s) captured",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val launchScanner = {
+        activity?.let { act ->
+            scanner.getStartScanIntent(act)
+                .addOnSuccessListener { intentSender ->
+                    scannerLauncher.launch(
+                        IntentSenderRequest.Builder(intentSender).build()
+                    )
+                }
+                .addOnFailureListener {
+                    viewModel.clearError()
+                }
+        }
+    }
+
+    if (!hasCameraPermission) {
+        // Permission request UI
+        Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Primary.copy(alpha = 0.12f),
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(32.dp), tint = Primary)
                         }
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
-                    }
-                },
-                actions = {
-                    if (state.scannedPages.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setShowCamera(!state.showCamera) }) {
-                            Icon(
-                                if (state.showCamera) Icons.Filled.ViewCarousel else Icons.Filled.CameraAlt,
-                                "Toggle view"
-                            )
-                        }
+                    Spacer(Modifier.height(16.dp))
+                    Text("Camera Access Needed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Camera permission is required for live edge detection and document scanning.",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Button(
+                        onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Grant Camera Permission", fontWeight = FontWeight.SemiBold)
                     }
                 }
-            )
+            }
         }
-    ) { padding ->
-        if (!hasCameraPermission) {
-            // Permission request UI
+        return
+    }
+
+    // ── If Crop Mode is Active ──────────────────────────────────────
+    if (state.isCropMode && state.scannedPages.isNotEmpty()) {
+        val safeIndex = state.selectedPageIndex.coerceIn(0, state.scannedPages.size - 1)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { viewModel.cancelCrop() }) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Crop & Straighten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = { viewModel.applyCrop(safeIndex) },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Apply")
+                    }
+                }
+            }
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Camera permission is required to scan documents",
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) }) {
-                        Text("Grant Permission")
-                    }
-                }
+                CropOverlay(
+                    bitmap = state.scannedPages[safeIndex].bitmap,
+                    cropRect = state.cropRect,
+                    onCropRectChanged = { viewModel.updateCropRect(it) },
+                    onApply = { viewModel.applyCrop(safeIndex) },
+                    onCancel = { viewModel.cancelCrop() }
+                )
             }
-        } else if (state.showCamera) {
-            // Main scanner UI with mode tabs
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                // Mode selector tabs
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = state.scanMode == ScanMode.Document,
-                        onClick = { viewModel.setScanMode(ScanMode.Document) },
-                        label = { Text("📄 Document") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = state.scanMode == ScanMode.IDCard,
-                        onClick = { viewModel.setScanMode(ScanMode.IDCard) },
-                        label = { Text("🪪 ID Card") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = state.scanMode == ScanMode.Batch,
-                        onClick = { viewModel.setScanMode(ScanMode.Batch) },
-                        label = { Text("📚 Batch") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+        }
+        return
+    }
 
-                when (state.scanMode) {
-                    ScanMode.Document -> {
-                        // Document mode — launch ML Kit scanner
-                        DocumentModeView(
-                            scannedPages = state.scannedPages,
-                            isProcessing = state.isProcessing,
-                            isSavingPdf = state.isSavingPdf,
-                            onLaunchScanner = {
-                                activity?.let { act ->
-                                    scanner.getStartScanIntent(act)
-                                        .addOnSuccessListener { intentSender ->
-                                            scannerLauncher.launch(
-                                                IntentSenderRequest.Builder(intentSender).build()
-                                            )
-                                        }
-                                        .addOnFailureListener { e ->
-                                            viewModel.clearError()
-                                        }
-                                }
-                            },
-                            onExportPdf = {
-                                if (state.scannedPages.isNotEmpty()) viewModel.exportAsPdf()
-                            }
-                        )
-                    }
-                    ScanMode.IDCard -> {
-                        // ID Card mode — ML Kit scan for each side
-                        IdCardModeView(
-                            step = state.idCardStep,
-                            frontBitmap = state.idCardFrontBitmap,
-                            backBitmap = state.idCardBackBitmap,
-                            isProcessing = state.isProcessing,
-                            idCardFrontOnly = state.idCardFrontOnly,
-                            onToggleFrontOnly = { viewModel.toggleIdCardFrontOnly(it) },
-                            onScanFront = {
-                                activity?.let { act ->
-                                    idCardScanner.getStartScanIntent(act)
-                                        .addOnSuccessListener { intentSender ->
-                                            idFrontLauncher.launch(
-                                                IntentSenderRequest.Builder(intentSender).build()
-                                            )
-                                        }
-                                }
-                            },
-                            onScanBack = {
-                                activity?.let { act ->
-                                    idCardScanner.getStartScanIntent(act)
-                                        .addOnSuccessListener { intentSender ->
-                                            idBackLauncher.launch(
-                                                IntentSenderRequest.Builder(intentSender).build()
-                                            )
-                                        }
-                                }
-                            },
-                            onSkipBack = { viewModel.skipIdCardBackSide() },
-                            isBackSkipped = state.isBackSkipped,
-                            onCombine = { viewModel.combineIdCardSides() },
-                            onReset = { viewModel.resetIdCard() }
-                        )
-                    }
-                    ScanMode.Batch -> {
-                        BatchModeView(
-                            scannedPages = state.scannedPages,
-                            batchCount = state.batchScanCount,
-                            isProcessing = state.isProcessing,
-                            onLaunchScanner = {
-                                activity?.let { act ->
-                                    scanner.getStartScanIntent(act)
-                                        .addOnSuccessListener { intentSender ->
-                                            scannerLauncher.launch(
-                                                IntentSenderRequest.Builder(intentSender).build()
-                                            )
-                                        }
-                                }
-                            },
-                            onFinishBatch = { viewModel.finishBatchScan() }
-                        )
+    // ── Main Document Scanner Layout ────────────────────────────────
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // ── Section Header & Connected Beacon ───────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Primary.copy(alpha = 0.12f),
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.DocumentScanner, null, tint = Primary, modifier = Modifier.size(24.dp))
                     }
                 }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Document Scanner", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Auto edge detection & optical intake", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-        } else {
-            // Review mode
-            ReviewView(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                state = state,
-                onSelectPage = { viewModel.selectPage(it) },
-                onDeletePage = { viewModel.removePage(it) },
-                onApplyFilter = { index, filter -> viewModel.applyFilterToPage(index, filter) },
-                onBackToCamera = { viewModel.setShowCamera(true) },
-                onExportPdf = { viewModel.exportAsPdf() },
-                onSharePdf = { viewModel.sharePdf() },
-                onRotatePage = { index, degrees -> viewModel.rotatePage(index, degrees) },
-                onMovePage = { from, to -> viewModel.movePage(from, to) },
-                onEnterCrop = { viewModel.enterCropMode() },
-                onUpdateCrop = { viewModel.updateCropRect(it) },
-                onApplyCrop = { viewModel.applyCrop(it) },
-                onCancelCrop = { viewModel.cancelCrop() },
-                onToggleAdjustments = { viewModel.toggleAdjustments(it) },
-                onBrightnessChange = { viewModel.updateBrightness(it) },
-                onContrastChange = { viewModel.updateContrast(it) },
-                onApplyAdjustments = { viewModel.applyBrightnessContrast(it) },
-                onRunOcr = { viewModel.runOcr(it) },
-                onSetPageSize = { viewModel.setPageSize(it) },
-                onSetWatermarkText = { viewModel.setWatermarkText(it) },
-                onToggleWatermark = { viewModel.toggleWatermark(it) },
-                onSetWatermarkOpacity = { viewModel.setWatermarkOpacity(it) }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (isServerConnected) Green400.copy(alpha = 0.12f) else Orange400.copy(alpha = 0.12f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (isServerConnected) Green400 else Orange400)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (isServerConnected) "Online" else "Offline",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isServerConnected) Green400 else Orange400
+                    )
+                }
+            }
+        }
+
+        // ── Scan Mode Selector ──────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = state.scanMode == ScanMode.Document,
+                onClick = { viewModel.setScanMode(ScanMode.Document) },
+                label = { Text("📄 Document", fontWeight = FontWeight.Medium) },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = state.scanMode == ScanMode.IDCard,
+                onClick = { viewModel.setScanMode(ScanMode.IDCard) },
+                label = { Text("🪪 ID Card", fontWeight = FontWeight.Medium) },
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = state.scanMode == ScanMode.Batch,
+                onClick = { viewModel.setScanMode(ScanMode.Batch) },
+                label = { Text("📚 Batch", fontWeight = FontWeight.Medium) },
+                modifier = Modifier.weight(1f)
             )
         }
 
-        // Error snackbar
-        if (state.error != null) {
-            Snackbar(
-                modifier = Modifier.padding(16.dp),
-                action = {
-                    TextButton(onClick = { viewModel.clearError() }) { Text("OK") }
+        when (state.scanMode) {
+            ScanMode.Document -> {
+                // ── 1. Hero Primary Scan Card ───────────────────────
+                Card(
+                    onClick = { launchScanner() },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Brush.linearGradient(listOf(Primary, Secondary)))
+                            .padding(20.dp)
+                    ) {
+                        // Viewfinder Corner Brackets Overlay
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .size(14.dp)
+                                .drawBehind {
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 2.5f)
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 2.5f)
+                                }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(14.dp)
+                                .drawBehind {
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 2.5f)
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth = 2.5f)
+                                }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .size(14.dp)
+                                .drawBehind {
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 2.5f)
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 2.5f)
+                                }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(14.dp)
+                                .drawBehind {
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 2.5f)
+                                    drawLine(Color.White.copy(alpha = 0.6f), Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth = 2.5f)
+                                }
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White.copy(alpha = 0.2f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.AutoFixHigh, null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            "SMART OPTICAL ENGINE",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Scan New Document",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Capture, sharpen contrast & auto-detect page edges instantly.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color.Black.copy(alpha = 0.25f)
+                                    ) {
+                                        Text(
+                                            "Auto Edge Detection",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color.Black.copy(alpha = 0.25f)
+                                    ) {
+                                        Text(
+                                            "Flash: Auto",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White.copy(alpha = 0.22f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+                                modifier = Modifier.size(60.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.PhotoCamera, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                                }
+                            }
+                        }
+                    }
                 }
-            ) { Text(state.error!!) }
+
+                // ── 2. Scanned Pages Live Gallery ───────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Scanned Pages", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (state.scannedPages.isNotEmpty()) Primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            "${state.scannedPages.size} pages captured",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (state.scannedPages.isNotEmpty()) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (state.scannedPages.isNotEmpty()) {
+                    val safeIndex = state.selectedPageIndex.coerceIn(0, state.scannedPages.size - 1)
+
+                    // Horizontal Thumbnails Strip
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        itemsIndexed(state.scannedPages) { index, page ->
+                            val isSelected = index == safeIndex
+                            Card(
+                                onClick = { viewModel.selectPage(index) },
+                                shape = RoundedCornerShape(12.dp),
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, Tertiary) else androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                elevation = CardDefaults.cardElevation(if (isSelected) 3.dp else 1.dp),
+                                modifier = Modifier.width(90.dp).height(125.dp)
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    Image(
+                                        bitmap = page.bitmap.asImageBitmap(),
+                                        contentDescription = "Page ${index + 1}",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    // Page Number Badge
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isSelected) Tertiary else Color.Black.copy(alpha = 0.65f),
+                                        modifier = Modifier.align(Alignment.TopStart).padding(5.dp).size(20.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                "${index + 1}",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                    // Delete Page Button
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(5.dp)
+                                            .size(20.dp)
+                                            .clickable { viewModel.removePage(index) }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Filled.Close, "Delete", tint = Red400, modifier = Modifier.size(13.dp))
+                                        }
+                                    }
+                                    // Bottom Page Label
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                                        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                                    ) {
+                                        Text(
+                                            "Page ${index + 1}",
+                                            modifier = Modifier.padding(vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            textAlign = TextAlign.Center,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) Tertiary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Add Page Card
+                        item {
+                            Card(
+                                onClick = { launchScanner() },
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Primary.copy(alpha = 0.4f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier.width(90.dp).height(125.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Primary.copy(alpha = 0.12f),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Filled.Add, null, tint = Primary, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Add Page", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Primary)
+                                    Text("+ Camera", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+
+                    // Main Active Page Preview Box
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(2.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Page ${safeIndex + 1} of ${state.scannedPages.size}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Tertiary.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        state.scannedPages[safeIndex].filter,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Tertiary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    bitmap = state.scannedPages[safeIndex].bitmap.asImageBitmap(),
+                                    contentDescription = "Active page",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                    }
+
+                    // ── 3. Document Enhancement & Tools ─────────────────
+                    Text("Document Enhancement & Tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Crop & Rotate
+                        Card(
+                            onClick = { viewModel.enterCropMode() },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Primary.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Crop, null, tint = Primary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text("Crop & Rotate", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Text("Adjust borders", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        // Color Filter
+                        val filters = listOf("Auto Enhance", "B&W", "Grayscale", "Original")
+                        val currentFilter = state.scannedPages[safeIndex].filter
+                        Card(
+                            onClick = {
+                                val nextIdx = (filters.indexOf(currentFilter) + 1) % filters.size
+                                viewModel.applyFilterToPage(safeIndex, filters[nextIdx])
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Secondary.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.FilterVintage, null, tint = Secondary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text("Color Filter", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Text(currentFilter, style = MaterialTheme.typography.labelSmall, color = Secondary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // OCR Search
+                        Card(
+                            onClick = { viewModel.runOcr(safeIndex) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Tertiary.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (state.isOcrRunning) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Tertiary)
+                                        } else {
+                                            Icon(Icons.Filled.TextFields, null, tint = Tertiary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text("OCR Search", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Text("Extract text", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        // Rotate 90
+                        Card(
+                            onClick = { viewModel.rotatePage(safeIndex, 90) },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Orange400.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.RotateRight, null, tint = Orange400, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text("Rotate 90°", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Text("Clockwise", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // ── 4. Output Specification ─────────────────────────
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(1.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.PictureAsPdf, null, tint = Primary, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Output Specification", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                }
+                                Text("PDF Standard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // Page size selector
+                            Text("Page Format", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(PageSize.A4, PageSize.Letter, PageSize.Legal).forEach { size ->
+                                    val isSelected = state.pageSize == size
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { viewModel.setPageSize(size) },
+                                        label = { Text(size.label, style = MaterialTheme.typography.labelSmall) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 5. Primary Action Buttons ───────────────────────
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Save PDF
+                        OutlinedButton(
+                            onClick = { viewModel.savePdf() },
+                            enabled = !state.isSavingPdf && !state.isDirectPrinting,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            if (state.isSavingPdf) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Saving...", fontWeight = FontWeight.SemiBold)
+                            } else {
+                                Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Save PDF", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        // Direct Print (Primary Action)
+                        Button(
+                            onClick = { viewModel.directPrint() },
+                            enabled = !state.isSavingPdf && !state.isDirectPrinting,
+                            modifier = Modifier.weight(1.4f).height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        ) {
+                            if (state.isDirectPrinting) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Printing...", fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(Icons.Filled.Print, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Direct Print", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Share
+                        OutlinedButton(
+                            onClick = { viewModel.sharePdf() },
+                            enabled = !state.isSavingPdf && !state.isDirectPrinting,
+                            modifier = Modifier.size(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Filled.Share, "Share", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                } else {
+                    // Empty state card
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.DocumentScanner, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text("No scanned pages yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Tap 'Scan New Document' above to capture with auto-edge detection.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // ── 6. Scanning Tip Card ─────────────────────────────
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Primary.copy(alpha = 0.06f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Primary.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.TipsAndUpdates, null, tint = Primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Tip: Place documents on a dark background for instant edge detection & auto-deskewing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            ScanMode.IDCard -> {
+                IdCardModeView(
+                    step = state.idCardStep,
+                    frontBitmap = state.idCardFrontBitmap,
+                    backBitmap = state.idCardBackBitmap,
+                    isProcessing = state.isProcessing,
+                    idCardFrontOnly = state.idCardFrontOnly,
+                    onToggleFrontOnly = { viewModel.toggleIdCardFrontOnly(it) },
+                    onScanFront = {
+                        activity?.let { act ->
+                            idCardScanner.getStartScanIntent(act)
+                                .addOnSuccessListener { intentSender ->
+                                    idFrontLauncher.launch(
+                                        IntentSenderRequest.Builder(intentSender).build()
+                                    )
+                                }
+                        }
+                    },
+                    onScanBack = {
+                        activity?.let { act ->
+                            idCardScanner.getStartScanIntent(act)
+                                .addOnSuccessListener { intentSender ->
+                                    idBackLauncher.launch(
+                                        IntentSenderRequest.Builder(intentSender).build()
+                                    )
+                                }
+                        }
+                    },
+                    onSkipBack = { viewModel.skipIdCardBackSide() },
+                    isBackSkipped = state.isBackSkipped,
+                    onCombine = { viewModel.combineIdCardSides() },
+                    onReset = { viewModel.resetIdCard() }
+                )
+            }
+
+            ScanMode.Batch -> {
+                BatchModeView(
+                    scannedPages = state.scannedPages,
+                    batchCount = state.batchScanCount,
+                    isProcessing = state.isProcessing,
+                    onLaunchScanner = { launchScanner() },
+                    onFinishBatch = { viewModel.finishBatchScan() }
+                )
+            }
         }
+
+        // Error message
+        if (state.error != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Red400.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Error, null, tint = Red400)
+                    Spacer(Modifier.width(8.dp))
+                    Text(state.error!!, color = Red400, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 

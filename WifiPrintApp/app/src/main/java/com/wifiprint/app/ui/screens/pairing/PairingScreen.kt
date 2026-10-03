@@ -65,7 +65,7 @@ fun PairingScreen(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                "Open the WiFi Print Server on your PC and\ngenerate a PIN from the Dashboard.",
+                "Open the SpoolDrop Server on your PC and\ngenerate a PIN from the Dashboard.",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

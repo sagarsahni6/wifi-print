@@ -15,6 +15,11 @@ import androidx.lifecycle.viewModelScope
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.wifiprint.app.data.models.PrintSettings
+import com.wifiprint.app.data.repository.PrintRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +64,9 @@ data class ScannerUiState(
     val currentFilter: String = "Auto Enhance",
     val isProcessing: Boolean = false,
     val isSavingPdf: Boolean = false,
+    val isDirectPrinting: Boolean = false,
+    val savePdfSuccessMessage: String? = null,
+    val directPrintSuccess: Boolean = false,
     val savedPdfUri: Uri? = null,
     val error: String? = null,
     val showCamera: Boolean = true,
@@ -96,7 +104,8 @@ data class ScannerUiState(
 
 @HiltViewModel
 class ScannerViewModel @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val repository: PrintRepository
 ) : ViewModel() {
 
     companion object {
@@ -267,6 +276,7 @@ class ScannerViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     scannedPages = it.scannedPages + page,
+                    scanMode = ScanMode.Document,
                     isProcessing = false,
                     showCamera = false,
                     idCardStep = IdCardStep.Front,
@@ -292,110 +302,64 @@ class ScannerViewModel @Inject constructor(
     }
 
     /**
-     * Combines front and back ID card bitmaps into a single landscape A4 page
-     * with both sides placed SIDE BY SIDE (front left, back right).
+     * Combines front and back ID card bitmaps into a single PORTRAIT A4 page
+     * with both sides placed SIDE BY SIDE (front on left, back on right) near the top of the page.
+     * Absolutely NO text (no "FRONT", no "BACK", etc.) is drawn on the document, matching real scan standards.
      */
     private fun combineIdCardBitmaps(front: Bitmap, back: Bitmap): Bitmap {
-        // Landscape A4: width > height
-        val targetW = A4_HEIGHT  // 3508 (landscape width)
-        val targetH = A4_WIDTH   // 2480 (landscape height)
+        // Portrait A4: 2480 x 3508 at 300 DPI for crystal clear text and barcodes
+        val targetW = 2480  // Portrait A4 width
+        val targetH = 3508  // Portrait A4 height
         val composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(composite)
         canvas.drawColor(Color.WHITE)
 
-        val padding = 40
-        val labelHeight = 30
-        val cardAreaW = (targetW - padding * 3) / 2
-        val cardAreaH = targetH - padding * 2 - labelHeight
+        // Standard ISO/IEC 7810 ID-1 card dimensions (85.60 mm × 53.98 mm)
+        // At 300 DPI: cardW = 1011 px, cardH = 638 px
+        val cardW = 1011
+        val cardH = 638
+        val gap = 80 // ~6.8 mm between the two cards
+        val topMargin = 220 // Placed near top of A4 sheet (as in Image 4)
 
-        // Scale front to fit left half
-        val frontScale = min(
-            cardAreaW.toFloat() / front.width,
-            cardAreaH.toFloat() / front.height
-        )
-        val frontW = (front.width * frontScale).toInt()
-        val frontH = (front.height * frontScale).toInt()
-        val frontLeft = padding + (cardAreaW - frontW) / 2f
-        val frontTop = padding + labelHeight + (cardAreaH - frontH) / 2f
+        val totalCardsWidth = cardW * 2 + gap
+        val startX = (targetW - totalCardsWidth) / 2 // Centered horizontally: (2480 - 2102) / 2 = 189 px
 
-        // Label
-        val labelPaint = Paint().apply {
-            color = Color.DKGRAY; textSize = 24f; isAntiAlias = true
-            typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER
-        }
-        canvas.drawText("FRONT", (padding + cardAreaW / 2f), (padding + 24f), labelPaint)
+        // Draw Front card on LEFT
+        val frontRect = RectF(startX.toFloat(), topMargin.toFloat(), (startX + cardW).toFloat(), (topMargin + cardH).toFloat())
+        val frontPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        canvas.drawBitmap(front, null, frontRect, frontPaint)
 
-        canvas.drawBitmap(front, null,
-            RectF(frontLeft, frontTop, frontLeft + frontW, frontTop + frontH),
-            Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+        // Draw Back card on RIGHT
+        val backStartX = startX + cardW + gap
+        val backRect = RectF(backStartX.toFloat(), topMargin.toFloat(), (backStartX + cardW).toFloat(), (topMargin + cardH).toFloat())
+        val backPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        canvas.drawBitmap(back, null, backRect, backPaint)
 
-        // Scale back to fit right half
-        val backScale = min(
-            cardAreaW.toFloat() / back.width,
-            cardAreaH.toFloat() / back.height
-        )
-        val backW = (back.width * backScale).toInt()
-        val backH = (back.height * backScale).toInt()
-        val rightAreaLeft = padding * 2 + cardAreaW
-        val backLeft = rightAreaLeft + (cardAreaW - backW) / 2f
-        val backTop = padding + labelHeight + (cardAreaH - backH) / 2f
-
-        canvas.drawText("BACK", (rightAreaLeft + cardAreaW / 2f), (padding + 24f), labelPaint)
-
-        canvas.drawBitmap(back, null,
-            RectF(backLeft, backTop, backLeft + backW, backTop + backH),
-            Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
-
-        // Separator line between front and back
-        val separatorPaint = Paint().apply {
-            color = Color.LTGRAY; strokeWidth = 1.5f; isAntiAlias = true
-        }
-        val separatorX = (padding * 1.5f + cardAreaW)
-        canvas.drawLine(separatorX, padding.toFloat(), separatorX, (targetH - padding).toFloat(), separatorPaint)
-
+        // NO ANY TEXT DRAWN (No "FRONT", no "BACK", no headers, no watermarks, no lines)
         return composite
     }
 
     /**
-     * Renders a single front ID card bitmap cleanly centered on an A4 page
-     * with cutting guides and clean labeling, allowing user to skip back side.
+     * Renders a single front ID card bitmap at standard size near the top of a portrait A4 page
+     * with NO ANY text on the document.
      */
     private fun createSingleSideIdCardBitmap(front: Bitmap): Bitmap {
-        val targetW = A4_WIDTH   // 2480 (portrait A4)
-        val targetH = A4_HEIGHT  // 3508 (portrait A4)
+        val targetW = 2480  // Portrait A4 width
+        val targetH = 3508  // Portrait A4 height
         val composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(composite)
         canvas.drawColor(Color.WHITE)
 
-        val padding = 60
-        val labelHeight = 40
-        val cardAreaW = targetW - padding * 2
-        val cardAreaH = (targetH - padding * 3) / 2 // Place neatly on upper half
+        val cardW = 1011
+        val cardH = 638
+        val topMargin = 220
+        val startX = (targetW - cardW) / 2
 
-        val scale = min(
-            cardAreaW.toFloat() / front.width,
-            cardAreaH.toFloat() / front.height
-        )
-        val frontW = (front.width * scale).toInt()
-        val frontH = (front.height * scale).toInt()
-        val frontLeft = padding + (cardAreaW - frontW) / 2f
-        val frontTop = padding + labelHeight + (cardAreaH - frontH) / 2f
+        val frontRect = RectF(startX.toFloat(), topMargin.toFloat(), (startX + cardW).toFloat(), (topMargin + cardH).toFloat())
+        val frontPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        canvas.drawBitmap(front, null, frontRect, frontPaint)
 
-        val labelPaint = Paint().apply {
-            color = Color.DKGRAY; textSize = 26f; isAntiAlias = true
-            typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER
-        }
-        canvas.drawText("ID CARD (FRONT ONLY)", (targetW / 2f), (padding + 28f), labelPaint)
-
-        val destRect = RectF(frontLeft, frontTop, frontLeft + frontW, frontTop + frontH)
-        canvas.drawBitmap(front, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
-
-        // Subtle guide border
-        val borderPaint = Paint().apply {
-            color = Color.LTGRAY; style = Paint.Style.STROKE; strokeWidth = 1.5f
-        }
-        canvas.drawRect(destRect, borderPaint)
-
+        // NO ANY TEXT DRAWN
         return composite
     }
 
@@ -760,22 +724,99 @@ class ScannerViewModel @Inject constructor(
     //  PDF Export & Share
     // ═══════════════════════════════════════════════════════════════
 
-    fun exportAsPdf() {
+    fun savePdf() {
+        if (_state.value.scannedPages.isEmpty()) return
         viewModelScope.launch {
-            _state.update { it.copy(isSavingPdf = true, error = null) }
+            _state.update { it.copy(isSavingPdf = true, error = null, savePdfSuccessMessage = null) }
             try {
+                val fileName = "Scan_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.pdf"
                 val uri = withContext(Dispatchers.IO) {
                     createPdfFromBitmaps(
                         context,
                         _state.value.scannedPages.map { it.bitmap },
-                        _state.value.pageSize
+                        _state.value.pageSize,
+                        fileName
                     )
                 }
-                _state.update { it.copy(isSavingPdf = false, savedPdfUri = uri) }
+                _state.update {
+                    it.copy(
+                        isSavingPdf = false,
+                        savePdfSuccessMessage = "PDF saved to Documents/WifiPrint/Scans/$fileName"
+                    )
+                }
             } catch (e: Exception) {
-                _state.update { it.copy(isSavingPdf = false, error = "Failed to create PDF: ${e.message}") }
+                _state.update { it.copy(isSavingPdf = false, error = "Failed to save PDF: ${e.message}") }
             }
         }
+    }
+
+    fun directPrint() {
+        if (_state.value.scannedPages.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(isDirectPrinting = true, error = null, directPrintSuccess = false) }
+            try {
+                val fileName = "Scan_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.pdf"
+                val uri = withContext(Dispatchers.IO) {
+                    createPdfFromBitmaps(
+                        context,
+                        _state.value.scannedPages.map { it.bitmap },
+                        _state.value.pageSize,
+                        fileName
+                    )
+                }
+
+                val printersResult = repository.getPrinters()
+                val printer = printersResult.getOrNull()?.firstOrNull { it.isDefault }
+                    ?: printersResult.getOrNull()?.firstOrNull()
+
+                if (printer == null) {
+                    _state.update {
+                        it.copy(
+                            isDirectPrinting = false,
+                            error = "No printer detected. Please connect to your PC server on the Print tab to print directly."
+                        )
+                    }
+                    return@launch
+                }
+
+                val printSettings = PrintSettings(
+                    copies = 1,
+                    pageSize = _state.value.pageSize.name,
+                    orientation = "Portrait",
+                    colorMode = if (_state.value.currentFilter == "B&W" || _state.value.currentFilter == "Grayscale") "BlackAndWhite" else "Color"
+                )
+
+                val submitResult = repository.submitPrintJob(
+                    fileUri = uri,
+                    fileName = fileName,
+                    settings = printSettings,
+                    printerName = printer.name
+                )
+
+                if (submitResult.isSuccess) {
+                    _state.update {
+                        it.copy(
+                            isDirectPrinting = false,
+                            directPrintSuccess = true,
+                            savedPdfUri = uri
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            isDirectPrinting = false,
+                            error = "Print job failed: ${submitResult.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isDirectPrinting = false, error = "Failed to print: ${e.message}") }
+            }
+        }
+    }
+
+    fun exportAsPdf() {
+        savePdf()
     }
 
     fun sharePdf() {
@@ -797,9 +838,10 @@ class ScannerViewModel @Inject constructor(
     }
 
     fun clearSharePdf() { _state.update { it.copy(sharePdfUri = null) } }
-
     fun clearError() { _state.update { it.copy(error = null) } }
     fun clearSavedPdf() { _state.update { it.copy(savedPdfUri = null) } }
+    fun clearSavePdfSuccess() { _state.update { it.copy(savePdfSuccessMessage = null) } }
+    fun clearDirectPrintSuccess() { _state.update { it.copy(directPrintSuccess = false) } }
 
     // ═══════════════════════════════════════════════════════════════
     //  Image Processing & Filters
@@ -972,7 +1014,12 @@ class ScannerViewModel @Inject constructor(
     //  PDF Export
     // ═══════════════════════════════════════════════════════════════
 
-    private fun createPdfFromBitmaps(context: Context, bitmaps: List<Bitmap>, pageSize: PageSize): Uri {
+    private fun createPdfFromBitmaps(
+        context: Context,
+        bitmaps: List<Bitmap>,
+        pageSize: PageSize,
+        fileName: String = "Scan_${System.currentTimeMillis()}.pdf"
+    ): Uri {
         val pdf = PdfDocument()
         val st = _state.value
         for ((index, originalBitmap) in bitmaps.withIndex()) {
@@ -1009,7 +1056,7 @@ class ScannerViewModel @Inject constructor(
             if (optimizedBitmap != originalBitmap) optimizedBitmap.recycle()
         }
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "Scan_${System.currentTimeMillis()}.pdf")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
             put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/WifiPrint/Scans")
         }

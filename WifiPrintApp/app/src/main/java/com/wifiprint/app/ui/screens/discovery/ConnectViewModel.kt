@@ -111,7 +111,7 @@ class ConnectViewModel @Inject constructor(
     fun connectWithPin(ip: String, port: Int, pin: String) {
         val server = ServerInfo(
             id = "$ip:$port",
-            name = "WiFi Print Server",
+            name = "SpoolDrop Server",
             ipAddress = ip,
             port = port
         )

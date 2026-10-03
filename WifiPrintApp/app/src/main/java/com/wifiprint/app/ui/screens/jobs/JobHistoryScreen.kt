@@ -26,6 +26,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JobHistoryScreen(
+    onBack: () -> Unit = {},
     viewModel: JobHistoryViewModel = hiltViewModel()
 ) {
     val queueJobs by viewModel.queueJobs.collectAsState()
@@ -43,23 +44,39 @@ fun JobHistoryScreen(
                         colors = listOf(GradientStart, GradientEnd)
                     )
                 )
-                .padding(horizontal = 20.dp, vertical = 28.dp)
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
             Column {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Print Jobs",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = (-1).sp
-                        ),
-                        color = Color.White
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Column {
+                            Text(
+                                "Print Jobs",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = (-0.5).sp
+                                ),
+                                color = Color.White
+                            )
+                            Text(
+                                "Track and manage your print queue",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.refreshFromServer() }) {
                         if (isRefreshing) CircularProgressIndicator(
                             Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White
@@ -67,12 +84,6 @@ fun JobHistoryScreen(
                         else Icon(Icons.Filled.Refresh, "Refresh", tint = Color.White)
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Track and manage your print queue",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.75f)
-                )
             }
         }
 

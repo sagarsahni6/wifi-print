@@ -93,6 +93,15 @@ class NetworkMonitor(private val context: Context) {
     }
 
     /**
+     * Check if device has active internet access (via WiFi, Cellular, or Ethernet).
+     */
+    fun checkInternetConnected(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    /**
      * Get the current WiFi SSID (network name).
      */
     @Suppress("DEPRECATION")
@@ -109,9 +118,25 @@ class NetworkMonitor(private val context: Context) {
 
     /**
      * Get the device's local IPv4 address on the current Wi-Fi network.
+     * Uses NetworkInterface for modern Android compatibility without requiring location permissions.
      */
-    @Suppress("DEPRECATION")
     fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        return addr.hostAddress
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        @Suppress("DEPRECATION")
         return try {
             val ipInt = wifiManager.connectionInfo?.ipAddress ?: return null
             if (ipInt == 0) return null
@@ -131,17 +156,30 @@ class NetworkMonitor(private val context: Context) {
      * Checks if a target server IP address is on the same local network subnet as this Android device.
      */
     fun isSameLocalSubnet(serverIp: String): Boolean {
-        val localIp = getLocalIpAddress() ?: return false // Default false if unable to determine — safer than assuming same network
         if (serverIp == "localhost" || serverIp == "127.0.0.1") return true
 
-        val localParts = localIp.split('.')
-        val serverParts = serverIp.split('.')
-        if (localParts.size == 4 && serverParts.size == 4) {
-            // Check matching /24 prefix (first 3 octets, e.g. 192.168.1.X)
-            return localParts[0] == serverParts[0] &&
+        val localIp = getLocalIpAddress()
+        if (localIp != null) {
+            val localParts = localIp.split('.')
+            val serverParts = serverIp.split('.')
+            if (localParts.size == 4 && serverParts.size == 4) {
+                if (localParts[0] == serverParts[0] &&
                     localParts[1] == serverParts[1] &&
-                    localParts[2] == serverParts[2]
+                    localParts[2] == serverParts[2]) {
+                    return true
+                }
+            }
         }
+
+        // If device has active Wi-Fi and server is a private RFC1918 address, it is on the local network
+        if (checkWifiConnected() && (
+            serverIp.startsWith("192.168.") ||
+            serverIp.startsWith("10.") ||
+            serverIp.startsWith("172.")
+        )) {
+            return true
+        }
+
         return false
     }
 }

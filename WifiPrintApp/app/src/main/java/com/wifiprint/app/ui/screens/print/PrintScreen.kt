@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,9 @@ import com.wifiprint.app.ui.theme.*
 @Composable
 fun PrintScreen(
     onJobCreated: () -> Unit,
+    isConnected: Boolean = true,
+    serverName: String = "",
+    onNavigateToQr: () -> Unit = {},
     viewModel: PrintViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -81,7 +85,6 @@ fun PrintScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val files = mutableListOf<SelectedFile>()
             result.data?.let { data ->
-                // Multiple selection
                 val clipData = data.clipData
                 if (clipData != null) {
                     for (i in 0 until clipData.itemCount.coerceAtMost(10)) {
@@ -101,7 +104,6 @@ fun PrintScreen(
                         files.add(SelectedFile(uri, name))
                     }
                 } else {
-                    // Single selection fallback
                     data.data?.let { uri ->
                         result.data?.flags?.let { flags ->
                             val persistableFlags = flags and
@@ -127,6 +129,12 @@ fun PrintScreen(
         if (state.success) onJobCreated()
     }
 
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            viewModel.loadPrinters()
+        }
+    }
+
     if (state.showPasswordDialog) {
         PdfPasswordDialog(
             fileName = state.selectedFileName,
@@ -138,557 +146,712 @@ fun PrintScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Gradient Header ──────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientStart, GradientEnd)
-                    )
-                )
-                .padding(horizontal = 20.dp, vertical = 28.dp)
+        // ── Offline Warning Banner ──────────────────────────────────
+        if (!isConnected) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Red400.copy(alpha = 0.08f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Red400.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Red400.copy(alpha = 0.15f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.WifiOff, null, tint = Red400, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Printer Server Offline",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Red400
+                        )
+                        Text(
+                            "Connect to LAN or scan QR code",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToQr,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.QrCodeScanner, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Scan QR", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        // ── 1. Document Selection Area ──────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Spacer(Modifier.height(8.dp))
+            Text(
+                "Selected Document",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            val readyCount = if (state.isBatchMode) state.selectedFiles.size else if (state.selectedFileName.isNotEmpty()) 1 else 0
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (readyCount > 0) Primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
+            ) {
                 Text(
-                    "Print a File",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-1).sp
-                    ),
-                    color = Color.White
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Select a file and customize print settings",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.75f)
+                    if (readyCount > 0) "$readyCount File Ready" else "No File Chosen",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (readyCount > 0) Primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // ── File Selection ──────────────────────────────────────────
+        // Active Populated File Preview Card
+        if (state.selectedFileName.isNotEmpty() && !state.isBatchMode) {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.width(5.dp).fillMaxHeight().background(Primary))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val (iconColor, icon) = when (state.fileType) {
+                            "PDF" -> Red400 to Icons.Filled.PictureAsPdf
+                            "Image" -> Cyan400 to Icons.Filled.Image
+                            else -> Secondary to Icons.Filled.Description
+                        }
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Primary.copy(alpha = 0.1f),
-                            modifier = Modifier.size(36.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            color = iconColor.copy(alpha = 0.12f),
+                            modifier = Modifier.size(46.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.Description, null, tint = Primary,
-                                    modifier = Modifier.size(20.dp))
+                                Icon(icon, null, tint = iconColor, modifier = Modifier.size(24.dp))
                             }
                         }
-                        Spacer(Modifier.width(10.dp))
-                        Text("Select File", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.height(14.dp))
-
-                    // Show selected files (batch mode)
-                    if (state.isBatchMode && state.selectedFiles.isNotEmpty()) {
-                        state.selectedFiles.forEach { file ->
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                state.selectedFileName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.height(3.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(Icons.Filled.InsertDriveFile, null, tint = Primary,
-                                    modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(file.name, style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.weight(1f), maxLines = 1)
-                                IconButton(
-                                    onClick = { viewModel.removeFile(file) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(Icons.Filled.Close, "Remove", modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    // Show single selected file
-                    else if (state.selectedFileName.isNotEmpty() && !state.isBatchMode) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.InsertDriveFile, null, tint = Primary)
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(state.selectedFileName, style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1, fontWeight = FontWeight.Medium)
-                                Text(state.fileType, style = MaterialTheme.typography.bodySmall,
-                                    color = Tertiary)
-                            }
-                            IconButton(onClick = { viewModel.setFile(android.net.Uri.EMPTY, "") }) {
-                                Icon(Icons.Filled.Close, "Remove")
-                            }
-                        }
-                        // Show page count for PDFs
-                        if (state.isLoadingPageCount) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Getting page count...", style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } else if (state.totalPages != null) {
-                            Text("📄 ${state.totalPages} pages",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Tertiary, fontWeight = FontWeight.Medium)
-                        }
-
-                        // Locked PDF Banner / Status
-                        if (state.isPdfLocked) {
-                            Spacer(Modifier.height(8.dp))
-                            if (state.isPasswordVerified) {
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Green50,
-                                    modifier = Modifier.fillMaxWidth()
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = iconColor.copy(alpha = 0.12f)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Filled.LockOpen, null, tint = Green400, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "Password Verified (${state.totalPages ?: 1} pages)",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF2E7D32)
-                                            )
-                                            Text(
-                                                "PDF unlocked for printing",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFF388E3C)
-                                            )
-                                        }
-                                        TextButton(
-                                            onClick = { viewModel.setShowPasswordDialog(true) },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                        ) {
-                                            Text("Change", style = MaterialTheme.typography.labelMedium, color = Primary)
-                                        }
-                                    }
-                                }
-                            } else {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Orange50,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Filled.Lock, null, tint = Orange400, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "Password-Protected PDF",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFE65100)
-                                            )
-                                            Text(
-                                                "Password required to print",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFFEF6C00)
-                                            )
-                                        }
-                                        Button(
-                                            onClick = { viewModel.setShowPasswordDialog(true) },
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Orange400),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                        ) {
-                                            Text("Enter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-
-                    // File picker buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilledTonalButton(
-                            onClick = {
-                                viewModel.clearFiles()
-                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                    addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "*/*"
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                                        "application/pdf", "image/jpeg", "image/png",
-                                        "text/plain",
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    ))
-                                }
-                                filePicker.launch(intent)
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Single File")
-                        }
-
-                        FilledTonalButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                    addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "*/*"
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                                        "application/pdf", "image/jpeg", "image/png",
-                                        "text/plain",
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    ))
-                                }
-                                batchFilePicker.launch(intent)
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Filled.FileCopy, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Batch (${state.selectedFiles.size})")
-                        }
-                    }
-                }
-            }
-
-            // ── Inline Auto-Preview ─────────────────────────────────────
-            if (!state.isBatchMode && state.selectedFileUri != null &&
-                state.selectedFileUri != android.net.Uri.EMPTY &&
-                state.fileType != "Unknown"
-            ) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Cyan400.copy(alpha = 0.1f),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Visibility, null, tint = Cyan400,
-                                        modifier = Modifier.size(20.dp))
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Text("Preview", style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold)
-                        }
-                        Spacer(Modifier.height(12.dp))
-
-                        when (state.fileType) {
-                            "PDF" -> InlinePdfPreview(
-                                uri = state.selectedFileUri!!,
-                                isLocked = state.isPdfLocked,
-                                isPasswordVerified = state.isPasswordVerified,
-                                totalPages = state.totalPages,
-                                onUnlockClick = { viewModel.setShowPasswordDialog(true) }
-                            )
-                            "Image" -> InlineImagePreview(uri = state.selectedFileUri!!)
-                            "Text" -> InlineTextPreview(uri = state.selectedFileUri!!)
-                            else -> {
-                                Text("Preview not available for ${state.fileType} files",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth().padding(20.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Printer Selection ───────────────────────────────────────
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Tertiary.copy(alpha = 0.1f),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.Print, null, tint = Tertiary,
-                                    modifier = Modifier.size(20.dp))
-                            }
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Text("Printer", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.height(14.dp))
-
-                    if (state.isLoadingPrinters) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    } else if (state.printers.isEmpty()) {
-                        Text("No printers found", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        var expanded by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                            OutlinedTextField(
-                                value = state.selectedPrinter?.name ?: "Select printer",
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor(),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                state.printers.forEach { printer ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(printer.name, fontWeight = FontWeight.Medium)
-                                                Text(if (printer.isDefault) "Default" else printer.status,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        },
-                                        onClick = { viewModel.selectPrinter(printer); expanded = false }
+                                    Text(
+                                        state.fileType,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = iconColor
                                     )
                                 }
+                                if (state.totalPages != null) {
+                                    Text("•", color = MaterialTheme.colorScheme.outline)
+                                    Text(
+                                        "${state.totalPages} Pages",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Text("•", color = MaterialTheme.colorScheme.outline)
+                                Text(
+                                    if (state.settings.colorMode == "BlackAndWhite") "B&W" else "Color",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Tertiary,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
+                        }
+                        IconButton(
+                            onClick = { viewModel.setFile(android.net.Uri.EMPTY, "") },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Filled.Close, "Remove File", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
 
-            // ── Print Settings ──────────────────────────────────────────
+            // Locked PDF Banner if password protected
+            if (state.isPdfLocked) {
+                if (state.isPasswordVerified) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Green50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.LockOpen, null, tint = Green400, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Password Verified", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                Text("Ready to print", style = MaterialTheme.typography.bodySmall, color = Color(0xFF388E3C))
+                            }
+                            TextButton(onClick = { viewModel.setShowPasswordDialog(true) }) {
+                                Text("Change", style = MaterialTheme.typography.labelSmall, color = Primary)
+                            }
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Orange50,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Lock, null, tint = Orange400, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Password-Protected PDF", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                Text("Password required to print", style = MaterialTheme.typography.bodySmall, color = Color(0xFFEF6C00))
+                            }
+                            Button(
+                                onClick = { viewModel.setShowPasswordDialog(true) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Orange400),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Text("Enter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (state.isBatchMode && state.selectedFiles.isNotEmpty()) {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                elevation = CardDefaults.cardElevation(1.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        "Batch Files (${state.selectedFiles.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    state.selectedFiles.forEach { file ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Filled.InsertDriveFile, null, tint = Primary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(file.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1)
+                            IconButton(onClick = { viewModel.removeFile(file) }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Filled.Close, "Remove", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Browse / Drop Zone Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    viewModel.clearFiles()
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                            "application/pdf", "image/jpeg", "image/png", "text/plain",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ))
+                    }
+                    filePicker.launch(intent)
+                },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Primary.copy(alpha = 0.3f))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Primary.copy(alpha = 0.12f),
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.CloudUpload, null, tint = Primary, modifier = Modifier.size(24.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (state.selectedFileName.isNotEmpty() || state.selectedFiles.isNotEmpty()) "Tap to Select Another Document"
+                    else "Select File or Tap to Browse",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "Supports PDF, JPG, PNG, DOCX, XLSX (up to 50MB)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.clearFiles()
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                    "application/pdf", "image/jpeg", "image/png", "text/plain",
+                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                ))
+                            }
+                            filePicker.launch(intent)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Single File", style = MaterialTheme.typography.labelMedium)
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                    "application/pdf", "image/jpeg", "image/png", "text/plain",
+                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                ))
+                            }
+                            batchFilePicker.launch(intent)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.FileCopy, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Batch Mode", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+
+        // ── Inline Auto-Preview ─────────────────────────────────────
+        if (!state.isBatchMode && state.selectedFileUri != null &&
+            state.selectedFileUri != android.net.Uri.EMPTY &&
+            state.fileType != "Unknown"
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(1.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = Secondary.copy(alpha = 0.1f),
+                            color = Cyan400.copy(alpha = 0.12f),
                             modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.Settings, null, tint = Secondary,
-                                    modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.Visibility, null, tint = Cyan400, modifier = Modifier.size(20.dp))
                             }
                         }
                         Spacer(Modifier.width(10.dp))
-                        Text("Settings", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold)
+                        Text("Document Preview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                    // Copies
-                    SettingRow("Copies") {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = {
-                                if (state.settings.copies > 1)
-                                    viewModel.updateSettings(state.settings.copy(copies = state.settings.copies - 1))
-                            }) { Icon(Icons.Filled.Remove, "Decrease") }
-                            Text("${state.settings.copies}", fontWeight = FontWeight.Bold)
-                            IconButton(onClick = {
-                                viewModel.updateSettings(state.settings.copy(copies = state.settings.copies + 1))
-                            }) { Icon(Icons.Filled.Add, "Increase") }
+                    when (state.fileType) {
+                        "PDF" -> InlinePdfPreview(
+                            uri = state.selectedFileUri!!,
+                            isLocked = state.isPdfLocked,
+                            isPasswordVerified = state.isPasswordVerified,
+                            totalPages = state.totalPages,
+                            onUnlockClick = { viewModel.setShowPasswordDialog(true) }
+                        )
+                        "Image" -> InlineImagePreview(uri = state.selectedFileUri!!)
+                        "Text" -> InlineTextPreview(uri = state.selectedFileUri!!)
+                        else -> {
+                            Text(
+                                "Preview not available for ${state.fileType} files",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(20.dp)
+                            )
                         }
                     }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Page Range (Feature 1)
-                    SettingRow("Pages") {
-                        SegmentedButtons(
-                            options = listOf("All", "Custom"),
-                            selected = state.pageRangeMode,
-                            onSelected = { viewModel.setPageRangeMode(it) }
-                        )
-                    }
-
-                    if (state.pageRangeMode == "Custom") {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = state.settings.pageRange ?: "",
-                            onValueChange = { viewModel.setPageRange(it) },
-                            label = { Text("e.g. 1-5, 8, 11-15") },
-                            placeholder = { Text("1-5, 8, 11-15") },
-                            isError = state.pageRangeError != null,
-                            supportingText = {
-                                if (state.pageRangeError != null) {
-                                    Text(state.pageRangeError!!, color = Red400)
-                                } else if (state.totalPages != null) {
-                                    Text("Total: ${state.totalPages} pages",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Orientation
-                    SettingRow("Orientation") {
-                        SegmentedButtons(
-                            options = listOf("Portrait", "Landscape"),
-                            selected = state.settings.orientation,
-                            onSelected = { viewModel.updateSettings(state.settings.copy(orientation = it)) }
-                        )
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Color
-                    SettingRow("Color") {
-                        SegmentedButtons(
-                            options = listOf("Color", "B&W"),
-                            selected = if (state.settings.colorMode == "BlackAndWhite") "B&W" else "Color",
-                            onSelected = {
-                                val mode = if (it == "B&W") "BlackAndWhite" else "Color"
-                                viewModel.updateSettings(state.settings.copy(colorMode = mode))
-                            }
-                        )
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Page Size
-                    SettingRow("Paper") {
-                        SegmentedButtons(
-                            options = listOf("A4", "Letter", "Legal"),
-                            selected = state.settings.pageSize,
-                            onSelected = { viewModel.updateSettings(state.settings.copy(pageSize = it)) }
-                        )
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Duplex
-                    SettingRow("Double-sided") {
-                        Switch(
-                            checked = state.settings.duplex,
-                            onCheckedChange = { viewModel.updateSettings(state.settings.copy(duplex = it)) }
-                        )
-                    }
-
-                    Divider(modifier = Modifier.padding(vertical = 4.dp),
-                        color = DividerColor)
-
-                    // Quality
-                    SettingRow("Quality") {
-                        SegmentedButtons(
-                            options = listOf("Draft", "Normal", "High"),
-                            selected = state.settings.quality,
-                            onSelected = { viewModel.updateSettings(state.settings.copy(quality = it)) }
-                        )
-                    }
                 }
             }
-
-            // Error
-            if (state.error != null) {
-                Card(colors = CardDefaults.cardColors(containerColor = Red400.copy(alpha = 0.1f)),
-                    shape = RoundedCornerShape(12.dp)) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Error, null, tint = Red400)
-                        Spacer(Modifier.width(8.dp))
-                        Text(state.error!!, color = Red400, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-
-            // ── Gradient Print Button ────────────────────────────────────
-            Button(
-                onClick = {
-                    if (state.isPdfLocked && !state.isPasswordVerified) {
-                        viewModel.setShowPasswordDialog(true)
-                    } else {
-                        viewModel.submitPrintJob()
-                    }
-                },
-                enabled = (state.selectedFileUri != null || state.selectedFiles.isNotEmpty()) &&
-                    state.selectedPrinter != null && !state.isUploading,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Primary,
-                    disabledContainerColor = Primary.copy(alpha = 0.4f)
-                ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = 4.dp,
-                    pressedElevation = 8.dp
-                )
-            ) {
-                if (state.isUploading) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary)
-                    Spacer(Modifier.width(12.dp))
-                    if (state.isBatchMode) {
-                        Text("Uploading ${state.batchProgress}/${state.batchTotal}...",
-                            fontWeight = FontWeight.SemiBold)
-                    } else {
-                        Text("Uploading...", fontWeight = FontWeight.SemiBold)
-                    }
-                } else {
-                    Icon(
-                        if (state.isPdfLocked && !state.isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Print,
-                        null
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    if (state.isBatchMode) {
-                        Text("Print ${state.selectedFiles.size} Files",
-                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    } else if (state.isPdfLocked && !state.isPasswordVerified) {
-                        Text("Unlock & Print", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    } else {
-                        Text("Print", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
         }
+
+        // ── 2. Print Preferences Section ────────────────────────────
+        Text(
+            "Print Preferences",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Printer Selector Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(1.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "DESTINATION PRINTER",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        letterSpacing = 0.5.sp
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Green400.copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Green400))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Online", style = MaterialTheme.typography.labelSmall, color = Green400, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                if (state.isLoadingPrinters) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else if (state.printers.isEmpty()) {
+                    Text("No printers found on network", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Primary.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Print, null, tint = Primary, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        state.selectedPrinter?.name ?: "Select a Printer",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        state.selectedPrinter?.let { if (it.isDefault) "Default Printer" else it.status } ?: "Tap to choose",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(Icons.Filled.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            state.printers.forEach { printer ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(printer.name, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (printer.isDefault) "Default • ${printer.status}" else printer.status,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    },
+                                    onClick = { viewModel.selectPrinter(printer); expanded = false }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Print Settings Matrix Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(1.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Copies
+                SettingRow("Copies") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (state.settings.copies > 1)
+                                    viewModel.updateSettings(state.settings.copy(copies = state.settings.copies - 1))
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) { Icon(Icons.Filled.Remove, "Decrease", modifier = Modifier.size(16.dp)) }
+                        Text(
+                            "${state.settings.copies}",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                        IconButton(
+                            onClick = {
+                                viewModel.updateSettings(state.settings.copy(copies = state.settings.copies + 1))
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) { Icon(Icons.Filled.Add, "Increase", modifier = Modifier.size(16.dp)) }
+                    }
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Page Range
+                SettingRow("Pages") {
+                    SegmentedButtons(
+                        options = listOf("All", "Custom"),
+                        selected = state.pageRangeMode,
+                        onSelected = { viewModel.setPageRangeMode(it) }
+                    )
+                }
+
+                if (state.pageRangeMode == "Custom") {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = state.settings.pageRange ?: "",
+                        onValueChange = { viewModel.setPageRange(it) },
+                        label = { Text("e.g. 1-5, 8, 11-15") },
+                        placeholder = { Text("1-5, 8, 11-15") },
+                        isError = state.pageRangeError != null,
+                        supportingText = {
+                            if (state.pageRangeError != null) {
+                                Text(state.pageRangeError!!, color = Red400)
+                            } else if (state.totalPages != null) {
+                                Text("Total: ${state.totalPages} pages", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Color Mode
+                SettingRow("Color Mode") {
+                    SegmentedButtons(
+                        options = listOf("Color", "B&W"),
+                        selected = if (state.settings.colorMode == "BlackAndWhite") "B&W" else "Color",
+                        onSelected = {
+                            val mode = if (it == "B&W") "BlackAndWhite" else "Color"
+                            viewModel.updateSettings(state.settings.copy(colorMode = mode))
+                        }
+                    )
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Paper Size
+                SettingRow("Paper Size") {
+                    SegmentedButtons(
+                        options = listOf("A4", "Letter", "Legal"),
+                        selected = state.settings.pageSize,
+                        onSelected = { viewModel.updateSettings(state.settings.copy(pageSize = it)) }
+                    )
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Orientation
+                SettingRow("Orientation") {
+                    SegmentedButtons(
+                        options = listOf("Portrait", "Landscape"),
+                        selected = state.settings.orientation,
+                        onSelected = { viewModel.updateSettings(state.settings.copy(orientation = it)) }
+                    )
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Two-sided Duplex
+                SettingRow("Two-Sided (Duplex)") {
+                    Switch(
+                        checked = state.settings.duplex,
+                        onCheckedChange = { viewModel.updateSettings(state.settings.copy(duplex = it)) }
+                    )
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+
+                // Quality
+                SettingRow("Print Quality") {
+                    SegmentedButtons(
+                        options = listOf("Draft", "Normal", "High"),
+                        selected = state.settings.quality,
+                        onSelected = { viewModel.updateSettings(state.settings.copy(quality = it)) }
+                    )
+                }
+            }
+        }
+
+        // Error Banner
+        if (state.error != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Red400.copy(alpha = 0.1f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Error, null, tint = Red400, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        state.error!!,
+                        color = Red400,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { viewModel.loadPrinters() }) {
+                        Text("Retry", fontWeight = FontWeight.Bold, color = Red400)
+                    }
+                }
+            }
+        }
+
+        // ── Primary Action Button ────────────────────────────────────
+        Button(
+            onClick = {
+                if (state.isPdfLocked && !state.isPasswordVerified) {
+                    viewModel.setShowPasswordDialog(true)
+                } else {
+                    viewModel.submitPrintJob()
+                }
+            },
+            enabled = (state.selectedFileUri != null || state.selectedFiles.isNotEmpty()) &&
+                state.selectedPrinter != null && !state.isUploading,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Primary,
+                disabledContainerColor = Primary.copy(alpha = 0.4f)
+            ),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 6.dp)
+        ) {
+            if (state.isUploading) {
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                Spacer(Modifier.width(12.dp))
+                if (state.isBatchMode) {
+                    Text("Uploading ${state.batchProgress}/${state.batchTotal}...", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("Uploading to Printer...", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Icon(
+                    if (state.isPdfLocked && !state.isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Print,
+                    null,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                val label = when {
+                    state.isBatchMode -> "Start Batch Print (${state.selectedFiles.size} Files)"
+                    state.isPdfLocked && !state.isPasswordVerified -> "Unlock & Print Document"
+                    else -> "Start Printing"
+                }
+                Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 

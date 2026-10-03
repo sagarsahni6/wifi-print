@@ -152,7 +152,7 @@ fun DiscoveryScreen(
                 .padding(horizontal = 20.dp, vertical = 28.dp)
         ) {
             Column {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -225,7 +225,7 @@ fun DiscoveryScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Open WiFi Print Server on your PC, find the QR code on the Dashboard, and scan it here.",
+                    Text("Open SpoolDrop Server on your PC, find the QR code on the Dashboard, and scan it here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center)
@@ -462,7 +462,7 @@ fun DiscoveryScreen(
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("Scanning network...", fontWeight = FontWeight.Medium)
-                            Text("Looking for WiFi Print servers",
+                            Text("Looking for SpoolDrop servers",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -526,7 +526,7 @@ fun DiscoveryScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "You need to download and install the free WiFi Print Server on your Windows PC before you can print.",
+                            "You need to download and install the free SpoolDrop Server on your Windows PC before you can print.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -561,7 +561,7 @@ fun DiscoveryScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("How to Connect", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    HelpStep("1", "Run WiFi Print Server on your Windows PC")
+                    HelpStep("1", "Run SpoolDrop Server on your Windows PC")
                     HelpStep("2", "Same Wi-Fi → Auto Connect (no setup needed)")
                     HelpStep("3", "Different network → Scan QR code or enter PIN")
                     HelpStep("4", "Accept the connection request on your PC")

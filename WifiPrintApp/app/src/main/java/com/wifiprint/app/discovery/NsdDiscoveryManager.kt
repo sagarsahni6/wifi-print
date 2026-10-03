@@ -159,7 +159,7 @@ class NsdDiscoveryManager(context: Context) {
                         if (json.optString("service") == "wifiprint") {
                             val ip = json.optString("ip", packet.address?.hostAddress ?: "")
                             val port = json.optInt("port", 5000)
-                            val name = json.optString("name", "WiFi Print Server")
+                            val name = json.optString("name", "SpoolDrop Server")
 
                             if (ip.isNotBlank()) {
                                 val isSameNet = networkMonitor.isSameLocalSubnet(ip)

@@ -557,7 +557,7 @@ private fun parseQrPayload(raw: String): QrConnectionData? {
         QrConnectionData(
             ip = json.getString("ip"),
             port = json.getInt("port"),
-            name = json.optString("name", "WiFi Print Server"),
+            name = json.optString("name", "SpoolDrop Server"),
             certFingerprint = json.optString("cert", ""),
             qrToken = token,
             tunnelUrl = tunnel

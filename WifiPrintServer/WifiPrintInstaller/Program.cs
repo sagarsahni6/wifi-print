@@ -39,7 +39,7 @@ namespace WifiPrintInstaller
 
         private void InitializeComponent()
         {
-            this.Text = "WiFi Print Server — Setup";
+            this.Text = "SpoolDrop Server — Setup";
             this.Size = new Size(560, 480);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -58,7 +58,7 @@ namespace WifiPrintInstaller
 
             Label lblTitle = new Label
             {
-                Text = "WiFi Print Server Setup",
+                Text = "SpoolDrop Server Setup",
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 Location = new Point(24, 16),
@@ -91,7 +91,7 @@ namespace WifiPrintInstaller
             string defaultPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs",
-                "WifiPrintServer"
+                "SpoolDropServer"
             );
 
             txtPath = new TextBox
@@ -159,7 +159,7 @@ namespace WifiPrintInstaller
 
             chkLaunch = new CheckBox
             {
-                Text = "Launch WiFi Print Server after installation",
+                Text = "Launch SpoolDrop Server after installation",
                 Checked = true,
                 Location = new Point(16, 106),
                 AutoSize = true
@@ -264,7 +264,7 @@ namespace WifiPrintInstaller
             try
             {
                 // 1. Close any running instance
-                lblStatus.Text = "Stopping any running instance of WiFi Print Server...";
+                lblStatus.Text = "Stopping any running instance of SpoolDrop Server...";
                 await Task.Run(() =>
                 {
                     try
@@ -310,8 +310,8 @@ namespace WifiPrintInstaller
                 {
                     lblStatus.Text = "Creating Desktop shortcut...";
                     string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                    string shortcutPath = Path.Combine(desktopDir, "WiFi Print Server.lnk");
-                    CreateShortcut(destExe, shortcutPath, "WiFi Print Server — Print from Android");
+                    string shortcutPath = Path.Combine(desktopDir, "SpoolDrop Server.lnk");
+                    CreateShortcut(destExe, shortcutPath, "SpoolDrop Server — Print from Android");
                 }
 
                 // 5. Create Start Menu shortcut
@@ -320,17 +320,17 @@ namespace WifiPrintInstaller
                     lblStatus.Text = "Creating Start Menu shortcut...";
                     string startMenuDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.Programs),
-                        "WiFi Print Server"
+                        "SpoolDrop Server"
                     );
                     Directory.CreateDirectory(startMenuDir);
-                    string shortcutPath = Path.Combine(startMenuDir, "WiFi Print Server.lnk");
-                    CreateShortcut(destExe, shortcutPath, "WiFi Print Server — Print from Android");
+                    string shortcutPath = Path.Combine(startMenuDir, "SpoolDrop Server.lnk");
+                    CreateShortcut(destExe, shortcutPath, "SpoolDrop Server — Print from Android");
 
                     // Also create uninstaller shortcut
                     string uninstallBat = Path.Combine(targetDir, "Uninstall.bat");
                     WriteUninstaller(uninstallBat, targetDir, startMenuDir);
-                    string uninstShortcut = Path.Combine(startMenuDir, "Uninstall WiFi Print Server.lnk");
-                    CreateShortcut(uninstallBat, uninstShortcut, "Uninstall WiFi Print Server");
+                    string uninstShortcut = Path.Combine(startMenuDir, "Uninstall SpoolDrop Server.lnk");
+                    CreateShortcut(uninstallBat, uninstShortcut, "Uninstall SpoolDrop Server");
                 }
 
                 // 6. Windows Firewall rule
@@ -344,7 +344,7 @@ namespace WifiPrintInstaller
                             var psi = new ProcessStartInfo
                             {
                                 FileName = "netsh",
-                                Arguments = "advfirewall firewall add rule name=\"WiFi Print Server\" dir=in action=allow protocol=TCP localport=5000",
+                                Arguments = "advfirewall firewall add rule name=\"SpoolDrop Server\" dir=in action=allow protocol=TCP localport=5000",
                                 UseShellExecute = true,
                                 CreateNoWindow = true,
                                 WindowStyle = ProcessWindowStyle.Hidden
@@ -439,20 +439,20 @@ namespace WifiPrintInstaller
             try
             {
                 string script = $@"@echo off
-echo Stopping WiFi Print Server...
+echo Stopping SpoolDrop Server...
 taskkill /f /im WifiPrintServer.exe >nul 2>&1
 
 echo Removing Shortcuts...
-del ""%USERPROFILE%\Desktop\WiFi Print Server.lnk"" >nul 2>&1
+del ""%USERPROFILE%\Desktop\SpoolDrop Server.lnk"" >nul 2>&1
 rd /s /q ""{startMenuDir}"" >nul 2>&1
 
 echo Removing Firewall rule...
-netsh advfirewall firewall delete rule name=""WiFi Print Server"" >nul 2>&1
+netsh advfirewall firewall delete rule name=""SpoolDrop Server"" >nul 2>&1
 
 echo Removing Installation Directory...
 rd /s /q ""{targetDir}"" >nul 2>&1
 
-echo WiFi Print Server has been uninstalled.
+echo SpoolDrop Server has been uninstalled.
 pause
 ";
                 File.WriteAllText(batPath, script);
