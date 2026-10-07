@@ -476,6 +476,71 @@ public sealed class QueueAndSecurityTests : IDisposable
         Assert.Equal(pendingJob.Id, remaining[0].Id);
     }
 
+    [Fact]
+    public void PrintQueueManager_CleanupJobFiles_Deletes_Uploaded_Files_And_Preserves_External_Files()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "PrintoraTest_" + Guid.NewGuid().ToString("N"));
+        var uploadDir = Path.Combine(tempDir, "Uploads");
+        Directory.CreateDirectory(uploadDir);
+
+        try
+        {
+            var settings = new AppSettings
+            {
+                UploadDirectory = uploadDir,
+                AutoCleanupAfterPrint = true
+            };
+
+            var store = CreateStateStore();
+            store.EnsureCreated();
+            var printerService = new PrinterService(NullLogger<PrinterService>.Instance, settings);
+            var queueManager = new PrintQueueManager(printerService, store, NullLogger<PrintQueueManager>.Instance, settings);
+
+            // 1. Managed uploaded file in uploadDir
+            string uploadedFile = Path.Combine(uploadDir, "uploaded_doc.pdf");
+            File.WriteAllText(uploadedFile, "dummy uploaded content");
+
+            // 2. Converted temp file in uploadDir
+            string convertedFile = Path.Combine(uploadDir, "converted_doc.pdf");
+            File.WriteAllText(convertedFile, "dummy converted content");
+
+            // 3. User's personal file outside uploadDir (e.g. desktop/documents)
+            string externalFile = Path.Combine(tempDir, "personal_resume.pdf");
+            File.WriteAllText(externalFile, "important user personal file");
+
+            var job = new PrintJob
+            {
+                FilePath = uploadedFile,
+                ConvertedFilePath = convertedFile,
+                OriginalFileName = "document.docx",
+                PrinterName = "TestPrinter"
+            };
+
+            var externalJob = new PrintJob
+            {
+                FilePath = externalFile,
+                OriginalFileName = "personal_resume.pdf",
+                PrinterName = "TestPrinter"
+            };
+
+            // Cleanup managed job
+            queueManager.CleanupJobFiles(job);
+            Assert.False(File.Exists(uploadedFile), "Uploaded file should be deleted");
+            Assert.False(File.Exists(convertedFile), "Converted file should be deleted");
+
+            // Cleanup external job
+            queueManager.CleanupJobFiles(externalJob);
+            Assert.True(File.Exists(externalFile), "External user file outside UploadDirectory MUST be preserved");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
     private sealed class TestDbContextFactory : IDbContextFactory<ServerStateContext>
     {
         private readonly DbContextOptions<ServerStateContext> _options;

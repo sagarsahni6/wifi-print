@@ -38,6 +38,13 @@ public class AppSettings
     public bool RequireAuth { get; set; } = true;
 
     /// <summary>
+    /// If true, uploaded documents and converted temporary files are automatically deleted
+    /// from the Host PC immediately after printing finishes successfully or is cancelled.
+    /// Protects privacy and prevents local disk storage buildup.
+    /// </summary>
+    public bool AutoCleanupAfterPrint { get; set; } = true;
+
+    /// <summary>
     /// If true, devices connecting from the same local Wi-Fi / subnet are automatically approved without prompt.
     /// </summary>
     public bool AutoApproveSameNetwork { get; set; } = true;

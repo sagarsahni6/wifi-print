@@ -1244,6 +1244,27 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Section: Privacy & Document Retention -->
+                        <TextBlock Text="Privacy &amp; Document Retention" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="2,16,0,8"/>
+
+                        <!-- Setting: Auto Cleanup After Print -->
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Automatic cleanup after printing" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Immediately delete uploaded documents and converted temporary files from host PC after print completion"
+                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" x:Name="AutoCleanupAfterPrintCheck" Style="{StaticResource ToggleSwitch}" IsChecked="True"/>
+                            </Grid>
+                        </Border>
+
                         <!-- Section 4 Header: Storage & Folders -->
                         <TextBlock Text="Quick Folder Shortcuts" FontSize="14" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="2,16,0,8"/>

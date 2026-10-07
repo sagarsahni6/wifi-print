@@ -13,6 +13,7 @@ Printora is a modern, enterprise-grade cloud and local wireless printing ecosyst
 - 📱 **Native Android Client**: Built with Jetpack Compose, Material 3, dynamic theming, document scanner, camera QR pairing, batch printing, and live queue tracking.
 - 🌐 **Web Print Studio**: Print directly from any phone or browser by scanning a dynamic QR code — no app installation required. Includes rate limiting, file type safety, and PIN protection.
 - 🔒 **End-to-End Security**: TLS encryption, AES-256 encrypted payload transfers, device pairing approvals, and certificate fingerprint pinning.
+- 🧹 **Zero-Trace Privacy & Auto-Cleanup**: Automatically deletes uploaded documents and converted temporary files from host storage immediately after printing completes or jobs are cancelled.
 - 🔄 **Seamless Data Migration**: Automatic transparent migration from legacy `%LOCALAPPDATA%\SpoolDrop` and `WifiPrintServer` directories to `%LOCALAPPDATA%\Printora\`.
 
 ---

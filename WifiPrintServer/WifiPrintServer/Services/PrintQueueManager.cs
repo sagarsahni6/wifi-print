@@ -17,6 +17,7 @@ public class PrintQueueManager : BackgroundService
     private readonly PrinterService _printerService;
     private readonly ServerStateStore _stateStore;
     private readonly ILogger<PrintQueueManager> _logger;
+    private readonly AppSettings _settings;
     private readonly SemaphoreSlim _signal = new(0);
     private readonly ConcurrentDictionary<string, byte> _busyPrinters = new(StringComparer.OrdinalIgnoreCase);
 
@@ -28,11 +29,13 @@ public class PrintQueueManager : BackgroundService
     public PrintQueueManager(
         PrinterService printerService,
         ServerStateStore stateStore,
-        ILogger<PrintQueueManager> logger)
+        ILogger<PrintQueueManager> logger,
+        AppSettings? settings = null)
     {
         _printerService = printerService;
         _stateStore = stateStore;
         _logger = logger;
+        _settings = settings ?? Program.Settings ?? new AppSettings();
     }
 
     /// <summary>
@@ -101,6 +104,11 @@ public class PrintQueueManager : BackgroundService
         EmitStatus(job, "Job cancelled");
         PersistJob(job);
 
+        if (_settings.AutoCleanupAfterPrint)
+        {
+            CleanupJobFiles(job);
+        }
+
         _logger.LogInformation("Job {JobId} cancelled", jobId);
         return true;
     }
@@ -118,9 +126,13 @@ public class PrintQueueManager : BackgroundService
         int count = 0;
         foreach (var id in completedIds)
         {
-            if (_jobs.TryRemove(id, out _))
+            if (_jobs.TryRemove(id, out var job))
             {
                 count++;
+                if (_settings.AutoCleanupAfterPrint && job != null)
+                {
+                    CleanupJobFiles(job);
+                }
             }
         }
 
@@ -376,6 +388,11 @@ public class PrintQueueManager : BackgroundService
                 EmitStatus(job, "Print completed");
                 PersistJob(job);
                 _logger.LogInformation("Job {JobId} completed successfully", job.Id);
+
+                if (_settings.AutoCleanupAfterPrint)
+                {
+                    CleanupJobFiles(job);
+                }
             }
             else
             {
@@ -416,6 +433,53 @@ public class PrintQueueManager : BackgroundService
         EmitStatus(job, $"Failed: {error}");
         PersistJob(job);
         _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, error);
+    }
+
+    /// <summary>
+    /// Deletes uploaded documents and temporary converted files for a print job
+    /// to guarantee privacy and prevent local host disk storage accumulation.
+    /// Original local desktop files outside the managed upload directory are preserved.
+    /// </summary>
+    public void CleanupJobFiles(PrintJob job)
+    {
+        if (job == null) return;
+
+        // Clean up converted file (e.g. DOCX -> PDF)
+        if (!string.IsNullOrWhiteSpace(job.ConvertedFilePath))
+        {
+            try
+            {
+                if (File.Exists(job.ConvertedFilePath))
+                {
+                    File.Delete(job.ConvertedFilePath);
+                    _logger.LogInformation("Cleaned up converted file for job {JobId}: {Path}", job.Id, job.ConvertedFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete converted file for job {JobId}: {Path}", job.Id, job.ConvertedFilePath);
+            }
+        }
+
+        // Clean up original uploaded file if stored in managed upload directory
+        if (!string.IsNullOrWhiteSpace(job.FilePath))
+        {
+            try
+            {
+                bool isManagedUpload = !string.IsNullOrWhiteSpace(_settings.UploadDirectory) &&
+                                       job.FilePath.StartsWith(_settings.UploadDirectory, StringComparison.OrdinalIgnoreCase);
+
+                if (isManagedUpload && File.Exists(job.FilePath))
+                {
+                    File.Delete(job.FilePath);
+                    _logger.LogInformation("Cleaned up uploaded file after print for job {JobId}: {Path}", job.Id, job.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete uploaded file for job {JobId}: {Path}", job.Id, job.FilePath);
+            }
+        }
     }
 
     private void EmitStatus(PrintJob job, string message)

@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         SessionDurationInput.Text = Program.Settings.SessionDurationMinutes.ToString();
         MaxPrintsInput.Text = Program.Settings.MaxPrintsPerSession.ToString();
         PrintCooldownInput.Text = Program.Settings.PrintCooldownSeconds.ToString();
+        AutoCleanupAfterPrintCheck.IsChecked = Program.Settings.AutoCleanupAfterPrint;
 
         // Display server IP & PIN
         var ip = DiscoveryService.GetLocalIpAddress();
@@ -645,6 +646,7 @@ public partial class MainWindow : Window
         Program.Settings.MinimizeToTray = MinimizeToTrayCheck.IsChecked == true;
         Program.Settings.AutoApproveSameNetwork = AutoApproveSameNetworkCheck.IsChecked == true;
         Program.Settings.RequireQrCodeOutsideLocalNetwork = RequireQrCodeOutsideLocalNetworkCheck.IsChecked == true;
+        Program.Settings.AutoCleanupAfterPrint = AutoCleanupAfterPrintCheck.IsChecked == true;
 
         // Save cloud relay setting
         bool wasRelayEnabled = Program.Settings.EnableCloudRelay;
