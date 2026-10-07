@@ -1,19 +1,50 @@
-# Printora — Next-Gen Cloud Print & Scan Service
+# Printora — Privacy-First Cloud & Local Print Platform
 
-Printora is a modern, enterprise-grade cloud and local wireless printing ecosystem that connects mobile devices, web browsers, and PCs to any printer without driver configuration.
+Printora is a modern, enterprise-grade, **privacy-focused** wireless and cloud printing ecosystem. It enables phones, tablets, and web browsers to print directly to any Windows PC-connected printer with **zero cloud data retention** and **automatic immediate cleanup**.
 
-**Android Device / Web Browser → Local Wi-Fi or Cloud Relay → Printora Server (Windows PC) → Any Printer**
+```
+📱 Android Device / 🌐 Web Browser
+           │
+           │  (TLS / AES-256 Encrypted Transit — No Cloud Storage)
+           ▼
+☁️ Cloudflare Tunnel Relay (Optional Remote Access)
+   OR  ⚡ Local Wi-Fi Subnet (Direct Socket Fast-Path)
+           │
+           ▼
+🖥️ Printora Server (Windows Host PC)
+   ├── 🛡️ In-Memory Decryption & Spooling
+   ├── 🖨️ Windows Print Dispatch
+   └── 🧹 Instant Automatic File Shredding / Cleanup
+           │
+           ▼
+🖨️ Physical Printer (Paper Output)
+```
+
+---
+
+## 🛡️ Privacy & Security Commitments
+
+Printora is engineered from the ground up for strict privacy, data sovereignty, and zero-trace operation:
+
+| Privacy Pillar | How Printora Protects You |
+|----------------|---------------------------|
+| **Zero Cloud Storage** | The cloud is strictly an ephemeral encrypted transit pipe. **Zero files, images, or documents are ever stored or cached in the cloud.** |
+| **Instant Auto-Cleanup** | Uploaded documents and converted temporary files are **automatically deleted immediately upon print completion or cancellation**. |
+| **Complete Data Sovereignty** | Print job metadata, SQLite databases, and server configurations reside 100% locally on your own Host PC (`%LOCALAPPDATA%\Printora`). |
+| **End-to-End Protection** | Connections use TLS encryption, AES-256 payload transfers, and certificate fingerprint pinning to prevent man-in-the-middle attacks. |
+| **Zero Account / No Tracking** | No account creation, no external telemetry, and no tracking cookies. You maintain full ownership of your printing hardware and data. |
+| **Host File Safeguard** | The auto-cleanup engine strictly manages temporary spool uploads; personal desktop files printed via drag-and-drop are always kept safe. |
 
 ---
 
 ## 🌟 Key Highlights
 
-- ☁️ **Cloud Print Service**: Built-in Cloud Relay powered by Cloudflare Tunnels (Zero-Trust Quick Tunnels and Named Tunnels). Print securely from anywhere outside your local Wi-Fi.
+- ☁️ **Privacy-Preserving Cloud Relay**: Print securely from outside your home or office network via Cloudflare Zero-Trust Tunnels without port-forwarding or external data storage.
 - ⚡ **LAN Fast-Path Connect**: Instant auto-discovery via mDNS and UDP beacons with zero-latency direct socket printing on local networks.
+- 🧹 **Zero-Trace Auto-Cleanup**: Automatically purges spool documents and converted files the moment your document leaves the print queue.
 - 📱 **Native Android Client**: Built with Jetpack Compose, Material 3, dynamic theming, document scanner, camera QR pairing, batch printing, and live queue tracking.
-- 🌐 **Web Print Studio**: Print directly from any phone or browser by scanning a dynamic QR code — no app installation required. Includes rate limiting, file type safety, and PIN protection.
-- 🔒 **End-to-End Security**: TLS encryption, AES-256 encrypted payload transfers, device pairing approvals, and certificate fingerprint pinning.
-- 🧹 **Zero-Trace Privacy & Auto-Cleanup**: Automatically deletes uploaded documents and converted temporary files from host storage immediately after printing completes or jobs are cancelled.
+- 🌐 **Web Print Studio**: Print directly from any phone or browser by scanning a dynamic QR code — no app installation required. Includes rate limiting, file type validation, and PIN protection.
+- 🔒 **Desktop Admin Control**: New connecting devices require explicit approval or a 6-digit dynamic PIN generated directly on the Host PC dashboard.
 - 🔄 **Seamless Data Migration**: Automatic transparent migration from legacy `%LOCALAPPDATA%\SpoolDrop` and `WifiPrintServer` directories to `%LOCALAPPDATA%\Printora\`.
 
 ---
@@ -38,7 +69,7 @@ Printora is a modern, enterprise-grade cloud and local wireless printing ecosyst
 Download and run `PrintoraServer-Setup.exe` or execute `release-package\Install-Server.bat`.
 - Automatically installs to `%LOCALAPPDATA%\Programs\PrintoraServer\`
 - Creates Start Menu and Desktop shortcuts for **Printora Server**
-- Adds Windows Firewall inbound rule for port 5000
+- Configures inbound Windows Firewall permissions for port 5000
 - Migrates existing databases, certificates, and settings seamlessly
 
 ### Option 2: Build & Run from Source
@@ -58,7 +89,7 @@ dotnet run --project WifiPrintServer
 | **Devices** | Paired Android phones and authorized mobile devices |
 | **Web Print** | Interactive QR code generator, printable station posters, and protection rules |
 | **Logs** | Real-time event log viewer with search and log level filters |
-| **Settings** | Port configuration, Cloud Relay settings, tray minimization, auto-start |
+| **Settings** | Port configuration, Cloud Relay settings, Privacy & Auto-Cleanup toggle, tray minimization |
 
 ### Firewall Configuration
 If running manually, ensure TCP port 5000 is permitted through Windows Firewall:
@@ -88,7 +119,7 @@ cd WifiPrintApp
 1. Tap **Print** in the bottom navigation.
 2. Select files (PDF, images, text documents) or capture a new scan using the built-in Document Scanner.
 3. Choose your target printer and set copies, orientation, page range, color mode, and duplex options.
-4. Tap **Send to Printora**. Track print progress in real time under the **Jobs** tab.
+4. Tap **Send to Printora**. The file is printed and automatically purged immediately upon completion.
 
 ---
 
@@ -110,13 +141,13 @@ cd WifiPrintApp
 | `/api/printers` | GET | JWT | List all installed printers with status |
 | `/api/printers/{id}` | GET | JWT | Fetch detailed printer capabilities and paper trays |
 
-### Print Jobs
+### Print Jobs & Document Uploads
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/print` | POST | JWT | Upload document and submit print job (multipart) |
 | `/api/jobs` | GET | JWT | List all print jobs (supports status filter) |
 | `/api/jobs/{id}` | GET | JWT | Get live status and metadata for a specific job |
-| `/api/jobs/{id}/cancel` | POST | JWT | Cancel a queued or active job |
+| `/api/jobs/{id}/cancel` | POST | JWT | Cancel a queued or active job (triggers auto-cleanup) |
 | `/api/jobs/{id}/retry` | POST | JWT | Retry a failed job |
 
 ### Web Print Studio (Public Browser Gateway)
@@ -169,7 +200,7 @@ WIFI PRINT/
 ```powershell
 dotnet test WifiPrintServer/WifiPrintServer.sln
 ```
-*Current test suite: 22 tests passing (unit tests for queue management, authentication, encryption, and Web Print protection).*
+*Current test suite: 23 unit tests passing (covering queue management, privacy auto-cleanup, authentication, encryption, and Web Print protection).*
 
 ### Run Android Tests & Build
 ```powershell
