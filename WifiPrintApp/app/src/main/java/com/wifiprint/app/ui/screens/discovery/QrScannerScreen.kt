@@ -243,7 +243,7 @@ fun QrScannerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "📷 Point at the QR code",
+                            "Scan Server QR Code",
                             color = Color.White, fontWeight = FontWeight.SemiBold
                         )
                         Text(
@@ -295,7 +295,7 @@ fun QrScannerScreen(
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
-                                                text = "🖥 " + server.name,
+                                                text = server.name,
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -307,7 +307,7 @@ fun QrScannerScreen(
                                                     shape = RoundedCornerShape(6.dp)
                                                 ) {
                                                     Text(
-                                                        text = "☁ Cloud Relay • Remote User",
+                                                        text = "Cloud Relay • Remote User",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                                                         fontWeight = FontWeight.Bold,
@@ -383,7 +383,7 @@ fun QrScannerScreen(
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Text(
-                                                text = "🖥 " + server.name,
+                                                text = server.name,
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -395,7 +395,7 @@ fun QrScannerScreen(
                                                     shape = RoundedCornerShape(6.dp)
                                                 ) {
                                                     Text(
-                                                        text = "☁ Cloud Relay • Print from Anywhere",
+                                                        text = "Cloud Relay • Print from Anywhere",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                                                         fontWeight = FontWeight.Bold,
@@ -557,7 +557,7 @@ private fun parseQrPayload(raw: String): QrConnectionData? {
         QrConnectionData(
             ip = json.getString("ip"),
             port = json.getInt("port"),
-            name = json.optString("name", "SpoolDrop Server"),
+            name = json.optString("name", "Printora Server"),
             certFingerprint = json.optString("cert", ""),
             qrToken = token,
             tunnelUrl = tunnel

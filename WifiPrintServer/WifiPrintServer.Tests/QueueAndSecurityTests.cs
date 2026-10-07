@@ -170,8 +170,16 @@ public sealed class QueueAndSecurityTests : IDisposable
         var printerService = new PrinterService(NullLogger<PrinterService>.Instance, settings);
         var queueManager = new PrintQueueManager(printerService, store, NullLogger<PrintQueueManager>.Instance);
         var authService = new AuthService(settings, NullLogger<AuthService>.Instance, store);
+        var fileService = new FileProcessingService(NullLogger<FileProcessingService>.Instance, settings);
+        var tunnelService = new TunnelService(NullLogger<TunnelService>.Instance);
+        var protectionService = new WebPrintProtectionService(settings, tunnelService, NullLogger<WebPrintProtectionService>.Instance);
 
-        var adminController = new AdminController(settings, printerService, queueManager, authService);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
+        var adminController = new AdminController(settings, printerService, queueManager, authService, fileService, tunnelService, protectionService, NullLogger<AdminController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
         var result = Assert.IsType<OkObjectResult>(adminController.GetOverview());
 
         Assert.NotNull(result.Value);
@@ -419,21 +427,8 @@ public sealed class QueueAndSecurityTests : IDisposable
         Directory.CreateDirectory(_tempDirectory);
         string password = "SecretPassword123";
 
-        // Create password-protected PDF with iText7
-        var writerProperties = new iText.Kernel.Pdf.WriterProperties()
-            .SetStandardEncryption(
-                System.Text.Encoding.UTF8.GetBytes(password),
-                System.Text.Encoding.UTF8.GetBytes(password),
-                iText.Kernel.Pdf.EncryptionConstants.ALLOW_PRINTING,
-                iText.Kernel.Pdf.EncryptionConstants.ENCRYPTION_AES_128);
-
-        using (var writer = new iText.Kernel.Pdf.PdfWriter(tempPdf, writerProperties))
-        using (var pdf = new iText.Kernel.Pdf.PdfDocument(writer))
-        {
-            var doc = new iText.Layout.Document(pdf);
-            doc.Add(new iText.Layout.Element.Paragraph("Encrypted Content for Print Testing"));
-            doc.Close();
-        }
+        // Write pre-generated password-protected PDF fixture (encrypted with "SecretPassword123")
+        File.WriteAllBytes(tempPdf, Convert.FromBase64String(EncryptedPdfFixtureBase64));
 
         var printerService = new PrinterService(NullLogger<PrinterService>.Instance, new AppSettings());
 
@@ -494,4 +489,6 @@ public sealed class QueueAndSecurityTests : IDisposable
 
         public ServerStateContext CreateDbContext() => new(_options);
     }
+
+    private const string EncryptedPdfFixtureBase64 = "JVBERi0xLjcKJeLjz9MKNSAwIG9iago8PC9GaWx0ZXIvRmxhdGVEZWNvZGUvTGVuZ3RoIDk2Pj5zdHJlYW0KKXqvoofuoY1TejxaC6m8HPK6amo13/tqAI7NNGIN05AtsGOgGJpCutZkO2teHCILRr3MDZDqiKkAM/e6SNXRgw6jZzkXysgdiuKCmk19numH5Yj/rn20hrm2TUNfS+0rCmVuZHN0cmVhbQplbmRvYmoKNCAwIG9iago8PC9Db250ZW50cyA1IDAgUi9NZWRpYUJveFswIDAgNTk1IDg0Ml0vUGFyZW50IDIgMCBSL1Jlc291cmNlczw8L0ZvbnQ8PC9GMSA2IDAgUj4+Pj4vVHJpbUJveFswIDAgNTk1IDg0Ml0vVHlwZS9QYWdlPj4KZW5kb2JqCjMgMCBvYmoKPDwvQ3JlYXRpb25EYXRlKFRcMDI3Ofp5PFxczK9fQDXN01wwMTegVYKHrkD3Z9RcMDE2XDAwMUa9vz7bjUGf8vNjaTrqYN26lff+QjspL01vZERhdGUoVFwwMjc5+nk8XFzMr19ANc3TXDAxN6BVgoeuQPdn1FwwMTZcMDAxRr2/PtuNQZ/y82NpOupg3bqV9/5COykvUHJvZHVjZXIoVFwwMjc5+nk8XFzMr19ANc3TXDAxN6CYU7jwqq3CbNZcMDAzUrhkTOw/n93sPTCVsVwwMzdSV2if8f0vLZG80FwwMTfvwVwo9sxFullcMDMz6EJNvX+vXYuPYlRcXK40odSFXDAyMkMpPj4KZW5kb2JqCjEgMCBvYmoKPDwvUGFnZXMgMiAwIFIvVHlwZS9DYXRhbG9nPj4KZW5kb2JqCjYgMCBvYmoKPDwvQmFzZUZvbnQvSGVsdmV0aWNhL0VuY29kaW5nL1dpbkFuc2lFbmNvZGluZy9TdWJ0eXBlL1R5cGUxL1R5cGUvRm9udD4+CmVuZG9iagoyIDAgb2JqCjw8L0NvdW50IDEvS2lkc1s0IDAgUl0vVHlwZS9QYWdlcz4+CmVuZG9iago3IDAgb2JqCjw8L0NGPDwvU3RkQ0Y8PC9BdXRoRXZlbnQvRG9jT3Blbi9DRk0vQUVTVjIvTGVuZ3RoIDE2Pj4+Pi9GaWx0ZXIvU3RhbmRhcmQvTGVuZ3RoIDEyOC9PICiNJINztl+BoVwwMzdP5eR7Oml2NFxmp4EnTmVcMDA1g9Dkv9t5QuwpL1AgLTE4NTIvUiA0L1N0bUYvU3RkQ0YvU3RyRi9TdGRDRi9VICifyphcMDMwQKRcMDI0QEqCXDAyNk0jPlwwMjF/XDAwMFwwMDBcMDAwXDAwMFwwMDBcMDAwXDAwMFwwMDBcMDAwXDAwMFwwMDBcMDAwXDAwMFwwMDBcMDAwXDAwMCkvViA0Pj4KZW5kb2JqCnhyZWYKMCA4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDU5MiAwMDAwMCBuIAowMDAwMDAwNzI1IDAwMDAwIG4gCjAwMDAwMDAzMTAgMDAwMDAgbiAKMDAwMDAwMDE3NyAwMDAwMCBuIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDA2MzcgMDAwMDAgbiAKMDAwMDAwMDc3NiAwMDAwMCBuIAp0cmFpbGVyCjw8L0VuY3J5cHQgNyAwIFIvSUQgWzw1OGZkZjAzOTY4NjUzZWUwZDhjZjQ2OTMyY2RjNTExMDdhNTA4NWNkZDY0YjE2OTI5NWM2MzRiZjYwMWMzMGIxNTU2Y2EzZTgyOGYyZDM5Y2Y4NTE5MTI3ODFlMTJjNGViZTU3YTZhODc5MWUzMDNlMTU3OTQwOTRlZDliNDNkND48NThmZGYwMzk2ODY1M2VlMGQ4Y2Y0NjkzMmNkYzUxMTA3YTUwODVjZGQ2NGIxNjkyOTVjNjM0YmY2MDFjMzBiMTU1NmNhM2U4MjhmMmQzOWNmODUxOTEyNzgxZTEyYzRlYmU1N2E2YTg3OTFlMzAzZTE1Nzk0MDk0ZWQ5YjQzZDQ+XS9JbmZvIDMgMCBSL1Jvb3QgMSAwIFIvU2l6ZSA4Pj4KJWlUZXh0LUNvcmUtOC4wLjIKc3RhcnR4cmVmCjEwNTcKJSVFT0YK";
 }

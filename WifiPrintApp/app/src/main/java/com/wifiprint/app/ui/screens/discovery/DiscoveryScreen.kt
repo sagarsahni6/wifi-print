@@ -225,7 +225,7 @@ fun DiscoveryScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Open SpoolDrop Server on your PC, find the QR code on the Dashboard, and scan it here.",
+                    Text("Open Printora Server on your PC, find the QR code on the Dashboard, and scan it here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center)
@@ -462,7 +462,7 @@ fun DiscoveryScreen(
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("Scanning network...", fontWeight = FontWeight.Medium)
-                            Text("Looking for SpoolDrop servers",
+                            Text("Looking for Printora cloud & local servers",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -526,7 +526,7 @@ fun DiscoveryScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "You need to download and install the free SpoolDrop Server on your Windows PC before you can print.",
+                            "You need to download and install the free Printora Server on your Windows PC before you can print.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -561,9 +561,9 @@ fun DiscoveryScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("How to Connect", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    HelpStep("1", "Run SpoolDrop Server on your Windows PC")
-                    HelpStep("2", "Same Wi-Fi → Auto Connect (no setup needed)")
-                    HelpStep("3", "Different network → Scan QR code or enter PIN")
+                    HelpStep("1", "Run Printora Server on your Windows PC")
+                    HelpStep("2", "Same Wi-Fi → Auto Connect (instant)")
+                    HelpStep("3", "Remote / Cloud → Scan Cloud QR code to connect from anywhere")
                     HelpStep("4", "Accept the connection request on your PC")
                 }
             }
@@ -619,17 +619,23 @@ private fun ServerCard(
                         )
                     }
                 } else {
-                    Surface(
+                                        Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Orange400.copy(alpha = 0.1f)
+                        color = Orange400.copy(alpha = 0.12f)
                     ) {
-                        Text(
-                            "🔒 Another Network — QR or PIN Required",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Orange400,
+                        Row(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            fontWeight = FontWeight.Bold
-                        )
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Lock, null, tint = Orange400, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Another Network — QR or PIN Required",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Orange400,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }

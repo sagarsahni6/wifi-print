@@ -39,7 +39,7 @@ namespace WifiPrintInstaller
 
         private void InitializeComponent()
         {
-            this.Text = "SpoolDrop Server — Setup";
+            this.Text = "Printora Server — Setup";
             this.Size = new Size(560, 480);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -58,7 +58,7 @@ namespace WifiPrintInstaller
 
             Label lblTitle = new Label
             {
-                Text = "SpoolDrop Server Setup",
+                Text = "Printora Server Setup",
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 Location = new Point(24, 16),
@@ -67,7 +67,7 @@ namespace WifiPrintInstaller
 
             Label lblSubtitle = new Label
             {
-                Text = "Install desktop server to print directly from Android over Wi-Fi",
+                Text = "Install desktop server to print directly from Android or Web over Cloud & Wi-Fi",
                 ForeColor = Color.FromArgb(170, 195, 240),
                 Font = new Font("Segoe UI", 9F),
                 Location = new Point(25, 48),
@@ -91,7 +91,7 @@ namespace WifiPrintInstaller
             string defaultPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs",
-                "SpoolDropServer"
+                "PrintoraServer"
             );
 
             txtPath = new TextBox
@@ -159,7 +159,7 @@ namespace WifiPrintInstaller
 
             chkLaunch = new CheckBox
             {
-                Text = "Launch SpoolDrop Server after installation",
+                Text = "Launch Printora Server after installation",
                 Checked = true,
                 Location = new Point(16, 106),
                 AutoSize = true
@@ -264,15 +264,18 @@ namespace WifiPrintInstaller
             try
             {
                 // 1. Close any running instance
-                lblStatus.Text = "Stopping any running instance of SpoolDrop Server...";
+                lblStatus.Text = "Stopping any running instance of Printora Server...";
                 await Task.Run(() =>
                 {
                     try
                     {
-                        foreach (var proc in Process.GetProcessesByName("WifiPrintServer"))
+                        foreach (var name in new[] { "PrintoraServer", "WifiPrintServer" })
                         {
-                            proc.Kill();
-                            proc.WaitForExit(3000);
+                            foreach (var proc in Process.GetProcessesByName(name))
+                            {
+                                proc.Kill();
+                                proc.WaitForExit(3000);
+                            }
                         }
                     }
                     catch { }
@@ -287,10 +290,10 @@ namespace WifiPrintInstaller
                 string sourceExe = FindSourceExe();
                 if (string.IsNullOrEmpty(sourceExe) || !File.Exists(sourceExe))
                 {
-                    throw new FileNotFoundException("Could not locate WifiPrintServer.exe in the installation package.");
+                    throw new FileNotFoundException("Could not locate PrintoraServer.exe in the installation package.");
                 }
 
-                string destExe = Path.Combine(targetDir, "WifiPrintServer.exe");
+                string destExe = Path.Combine(targetDir, "PrintoraServer.exe");
 
                 await Task.Run(() =>
                 {
@@ -310,8 +313,8 @@ namespace WifiPrintInstaller
                 {
                     lblStatus.Text = "Creating Desktop shortcut...";
                     string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                    string shortcutPath = Path.Combine(desktopDir, "SpoolDrop Server.lnk");
-                    CreateShortcut(destExe, shortcutPath, "SpoolDrop Server — Print from Android");
+                    string shortcutPath = Path.Combine(desktopDir, "Printora Server.lnk");
+                    CreateShortcut(destExe, shortcutPath, "Printora Server — Cloud & Local Printing");
                 }
 
                 // 5. Create Start Menu shortcut
@@ -320,17 +323,17 @@ namespace WifiPrintInstaller
                     lblStatus.Text = "Creating Start Menu shortcut...";
                     string startMenuDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.Programs),
-                        "SpoolDrop Server"
+                        "Printora Server"
                     );
                     Directory.CreateDirectory(startMenuDir);
-                    string shortcutPath = Path.Combine(startMenuDir, "SpoolDrop Server.lnk");
-                    CreateShortcut(destExe, shortcutPath, "SpoolDrop Server — Print from Android");
+                    string shortcutPath = Path.Combine(startMenuDir, "Printora Server.lnk");
+                    CreateShortcut(destExe, shortcutPath, "Printora Server — Cloud & Local Printing");
 
                     // Also create uninstaller shortcut
                     string uninstallBat = Path.Combine(targetDir, "Uninstall.bat");
                     WriteUninstaller(uninstallBat, targetDir, startMenuDir);
-                    string uninstShortcut = Path.Combine(startMenuDir, "Uninstall SpoolDrop Server.lnk");
-                    CreateShortcut(uninstallBat, uninstShortcut, "Uninstall SpoolDrop Server");
+                    string uninstShortcut = Path.Combine(startMenuDir, "Uninstall Printora Server.lnk");
+                    CreateShortcut(uninstallBat, uninstShortcut, "Uninstall Printora Server");
                 }
 
                 // 6. Windows Firewall rule
@@ -344,7 +347,7 @@ namespace WifiPrintInstaller
                             var psi = new ProcessStartInfo
                             {
                                 FileName = "netsh",
-                                Arguments = "advfirewall firewall add rule name=\"SpoolDrop Server\" dir=in action=allow protocol=TCP localport=5000",
+                                Arguments = "advfirewall firewall add rule name=\"Printora Server\" dir=in action=allow protocol=TCP localport=5000",
                                 UseShellExecute = true,
                                 CreateNoWindow = true,
                                 WindowStyle = ProcessWindowStyle.Hidden
@@ -397,17 +400,22 @@ namespace WifiPrintInstaller
         {
             string appDir = AppDomain.CurrentDomain.BaseDirectory;
 
-            // Direct check in same folder
-            string candidate = Path.Combine(appDir, "WifiPrintServer.exe");
-            if (File.Exists(candidate)) return candidate;
+            // Direct check for PrintoraServer.exe or WifiPrintServer.exe
+            string[] candidates = {
+                Path.Combine(appDir, "PrintoraServer.exe"),
+                Path.Combine(appDir, "WifiPrintServer.exe"),
+                Path.Combine(appDir, "PrintoraServer", "PrintoraServer.exe"),
+                Path.Combine(appDir, "WifiPrintServer", "PrintoraServer.exe"),
+                Path.Combine(appDir, "WifiPrintServer", "WifiPrintServer.exe"),
+                Path.Combine(appDir, "..", "publish", "PrintoraServer", "PrintoraServer.exe"),
+                Path.Combine(appDir, "..", "publish", "WifiPrintServer", "PrintoraServer.exe"),
+                Path.Combine(appDir, "..", "publish", "WifiPrintServer", "WifiPrintServer.exe")
+            };
 
-            // Check subfolder WifiPrintServer
-            candidate = Path.Combine(appDir, "WifiPrintServer", "WifiPrintServer.exe");
-            if (File.Exists(candidate)) return candidate;
-
-            // Check publish folder
-            candidate = Path.Combine(appDir, "..", "publish", "WifiPrintServer", "WifiPrintServer.exe");
-            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+            foreach (var cand in candidates)
+            {
+                if (File.Exists(cand)) return Path.GetFullPath(cand);
+            }
 
             return null;
         }
@@ -439,20 +447,21 @@ namespace WifiPrintInstaller
             try
             {
                 string script = $@"@echo off
-echo Stopping SpoolDrop Server...
+echo Stopping Printora Server...
+taskkill /f /im PrintoraServer.exe >nul 2>&1
 taskkill /f /im WifiPrintServer.exe >nul 2>&1
 
 echo Removing Shortcuts...
-del ""%USERPROFILE%\Desktop\SpoolDrop Server.lnk"" >nul 2>&1
+del ""%USERPROFILE%\Desktop\Printora Server.lnk"" >nul 2>&1
 rd /s /q ""{startMenuDir}"" >nul 2>&1
 
 echo Removing Firewall rule...
-netsh advfirewall firewall delete rule name=""SpoolDrop Server"" >nul 2>&1
+netsh advfirewall firewall delete rule name=""Printora Server"" >nul 2>&1
 
 echo Removing Installation Directory...
 rd /s /q ""{targetDir}"" >nul 2>&1
 
-echo SpoolDrop Server has been uninstalled.
+echo Printora Server has been uninstalled.
 pause
 ";
                 File.WriteAllText(batPath, script);

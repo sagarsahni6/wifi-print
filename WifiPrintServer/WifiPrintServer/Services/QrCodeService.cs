@@ -44,6 +44,38 @@ public class QrCodeService
     }
 
     /// <summary>
+    /// Generates a QR code BitmapImage pointing directly to a URL (e.g. Web Print Studio).
+    /// Any smartphone camera scans this directly to open the website in browser.
+    /// </summary>
+    public static BitmapImage GenerateUrlQrCode(string url, int pixelsPerModule = 10)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
+        using var qrCode = new PngByteQRCode(qrCodeData);
+        var pngBytes = qrCode.GetGraphic(pixelsPerModule);
+
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.StreamSource = new MemoryStream(pngBytes);
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.EndInit();
+        bitmap.Freeze(); // Make it thread-safe for WPF
+
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Generates raw PNG bytes for a URL QR code.
+    /// </summary>
+    public static byte[] GenerateUrlQrBytes(string url, int pixelsPerModule = 10)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
+        using var qrCode = new PngByteQRCode(qrCodeData);
+        return qrCode.GetGraphic(pixelsPerModule);
+    }
+
+    /// <summary>
     /// Returns the connection payload as a JSON string (for the REST endpoint).
     /// </summary>
     public static string GetConnectionPayloadJson(

@@ -2,6 +2,8 @@ package com.wifiprint.app.ui.screens.jobs
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.wifiprint.app.data.models.PrintJob
+import androidx.activity.compose.BackHandler
 import com.wifiprint.app.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -34,22 +38,22 @@ fun JobHistoryScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
 
+    // Handle system back button/gesture to ensure single-press navigation
+    BackHandler { onBack() }
+
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // ── Gradient Header ──────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientStart, GradientEnd)
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 20.dp)
+        // ── Modern Surface Header ─────────────────────────────────────
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            shadowElevation = 0.5.dp
         ) {
             Column {
                 Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -57,31 +61,58 @@ fun JobHistoryScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { onBack() }
+                            ) {
+                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                            }
                         }
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
-                                "Print Jobs",
-                                style = MaterialTheme.typography.headlineMedium.copy(
+                                "Print Queue & Jobs",
+                                style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = (-0.5).sp
+                                    letterSpacing = (-0.3).sp
                                 ),
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                "Track and manage your print queue",
+                                "Live spooling queue and print history",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.8f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    IconButton(onClick = { viewModel.refreshFromServer() }) {
-                        if (isRefreshing) CircularProgressIndicator(
-                            Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White
-                        )
-                        else Icon(Icons.Filled.Refresh, "Refresh", tint = Color.White)
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { viewModel.refreshFromServer() }
+                        ) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    Modifier.size(18.dp), strokeWidth = 2.dp, color = Primary
+                                )
+                            } else {
+                                Icon(Icons.Filled.Refresh, "Refresh", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
                 }
             }
@@ -93,7 +124,8 @@ fun JobHistoryScreen(
             // ── Pill-shaped Tab Row ──────────────────────────────────────
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(4.dp),
@@ -120,7 +152,7 @@ fun JobHistoryScreen(
                                 Text(
                                     tabLabel,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isSelected) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (count > 0 && tabIndex == 0) {
                                     Spacer(Modifier.width(6.dp))
@@ -182,7 +214,7 @@ fun JobHistoryScreen(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
                 ) {
                     items(displayJobs, key = { it.id }) { job ->
                         JobDetailCard(
@@ -226,6 +258,7 @@ fun JobDetailCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.animateContentSize()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -264,28 +297,13 @@ fun JobDetailCard(
                         Text("${job.printerName} • ${dateFormat.format(Date(job.createdAt))}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        // Priority badge
-                        if (job.priority != "Normal" && showQueueActions) {
+                        // Priority interactive chip
+                        if (showQueueActions) {
                             Spacer(Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = when (job.priority) {
-                                    "High" -> Red400.copy(alpha = 0.15f)
-                                    "Low" -> MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant
-                                }
-                            ) {
-                                Text(
-                                    job.priority,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = when (job.priority) {
-                                        "High" -> Red400
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            PriorityChip(
+                                currentPriority = job.priority,
+                                onSetPriority = onSetPriority
+                            )
                         }
                     }
                 }
@@ -320,60 +338,82 @@ fun JobDetailCard(
                     style = MaterialTheme.typography.bodySmall)
             }
 
-            // Action buttons
-            Spacer(Modifier.height(8.dp))
+            // Action buttons with 50/50 balanced weight — will NEVER vertically wrap!
+            Spacer(Modifier.height(10.dp))
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Queue actions — pause, resume, priority
-                if (showQueueActions) {
-                    when (job.status) {
-                        "Pending" -> {
-                            FilledTonalButton(
-                                onClick = onPause,
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Filled.Pause, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Pause")
-                            }
-                            PriorityDropdown(
-                                currentPriority = job.priority,
-                                onSetPriority = onSetPriority
-                            )
-                        }
-                        "Paused" -> {
-                            FilledTonalButton(
-                                onClick = onResume,
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Filled.PlayArrow, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Resume")
-                            }
-                        }
-                    }
-                }
-
-                if (job.status == "Failed") {
+                if (showQueueActions && job.status == "Pending") {
                     FilledTonalButton(
-                        onClick = onRetry,
-                        shape = RoundedCornerShape(12.dp)
+                        onClick = onPause,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
                     ) {
-                        Icon(Icons.Filled.Replay, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Retry")
+                        Icon(Icons.Filled.Pause, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Pause", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
-                }
-                if (job.status in listOf("Pending", "Printing", "Paused")) {
                     OutlinedButton(
                         onClick = onCancel,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Red500),
+                        border = BorderStroke(1.dp, Red400.copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
                     ) {
-                        Icon(Icons.Filled.Cancel, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Cancel")
+                        Icon(Icons.Filled.Close, null, Modifier.size(16.dp), tint = Red500)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Cancel", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                } else if (showQueueActions && job.status == "Paused") {
+                    Button(
+                        onClick = onResume,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Resume", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Red500),
+                        border = BorderStroke(1.dp, Red400.copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.Close, null, Modifier.size(16.dp), tint = Red500)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Cancel", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                } else if (job.status == "Printing") {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Red500),
+                        border = BorderStroke(1.dp, Red400.copy(alpha = 0.5f))
+                    ) {
+                        Icon(Icons.Filled.Close, null, Modifier.size(16.dp), tint = Red500)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Cancel Print Job", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+                } else if (job.status == "Failed") {
+                    Button(
+                        onClick = onRetry,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                    ) {
+                        Icon(Icons.Filled.Replay, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Retry Print", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -382,17 +422,43 @@ fun JobDetailCard(
 }
 
 @Composable
-private fun PriorityDropdown(
+private fun PriorityChip(
     currentPriority: String,
     onSetPriority: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        FilledTonalButton(onClick = { expanded = true }, shape = RoundedCornerShape(12.dp)) {
-            Icon(Icons.Filled.LowPriority, null, Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(currentPriority)
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = when (currentPriority) {
+                "High" -> Red400.copy(alpha = 0.15f)
+                "Low" -> MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            },
+            modifier = Modifier.clickable { expanded = true }
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    currentPriority,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (currentPriority) {
+                        "High" -> Red400
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.width(2.dp))
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf("High", "Normal", "Low").forEach { priority ->

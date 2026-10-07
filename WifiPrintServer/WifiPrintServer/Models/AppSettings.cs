@@ -9,26 +9,31 @@ namespace WifiPrintServer.Models;
 /// </summary>
 public class AppSettings
 {
-    private static readonly string SettingsDir = Path.Combine(
+    public static readonly string AppDataDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WifiPrintServer");
+        "Printora");
 
-    private static readonly string SettingsFilePath = Path.Combine(SettingsDir, "settings.json");
+    public static readonly string SettingsDir = AppDataDir;
+
+    public static readonly string SettingsFilePath = Path.Combine(SettingsDir, "settings.json");
 
     public int ServerPort { get; set; } = 5000;
     public string ServerName { get; set; } = Environment.MachineName;
+
+    /// <summary>
+    /// Permanent unique identifier for this Host PC (e.g. DESKTOP-PLK2AIK-W-58291).
+    /// Generated once at installation / first launch and never changes.
+    /// Forms the dedicated URL: https://print.yourshop.com/{HostIdentifier}
+    /// </summary>
+    public string HostIdentifier { get; set; } = GenerateHostIdentifier();
     public string JwtSecret { get; set; } = GenerateSecureToken(48);
     public string CertificatePassword { get; set; } = GenerateSecureToken(24);
     public int JwtExpirationDays { get; set; } = 365;
     public string? DefaultPrinter { get; set; }
     public bool AutoStart { get; set; } = false;
     public bool MinimizeToTray { get; set; } = true;
-    public string UploadDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WifiPrintServer", "Uploads");
-    public string LogDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WifiPrintServer", "Logs");
+    public string UploadDirectory { get; set; } = Path.Combine(AppDataDir, "Uploads");
+    public string LogDirectory { get; set; } = Path.Combine(AppDataDir, "Logs");
     public int MaxFileSizeMB { get; set; } = 100;
     public bool RequireAuth { get; set; } = true;
 
@@ -86,6 +91,76 @@ public class AppSettings
     public int PrintCooldownSeconds { get; set; } = 30;
 
     /// <summary>
+    /// If true, users accessing via Cloudflare Tunnel or public internet must enter the 6-digit PIN.
+    /// Local Wi-Fi users print freely without PIN.
+    /// </summary>
+    public bool RequirePinForWebTunnel { get; set; } = true;
+
+    /// <summary>
+    /// Maximum allowed copies per web print submission to prevent paper exhaustion.
+    /// </summary>
+    public int MaxWebPrintCopies { get; set; } = 3;
+
+    /// <summary>
+    /// Maximum allowed pages in a PDF document per web print submission.
+    /// </summary>
+    public int MaxWebPrintPages { get; set; } = 30;
+
+    /// <summary>
+    /// Max print submissions allowed per minute per IP address.
+    /// </summary>
+    public int WebPrintRateLimitPerMinute { get; set; } = 2;
+
+    /// <summary>
+    /// Max print submissions allowed per hour per IP address.
+    /// </summary>
+    public int WebPrintRateLimitPerHour { get; set; } = 15;
+
+    /// <summary>
+    /// Generates a permanent unique identifier combining the machine name with a random 5-digit number.
+    /// e.g. DESKTOP-PLK2AIK-W-48291
+    /// </summary>
+    public static string GenerateHostIdentifier()
+    {
+        var cleanMachineName = new string(Environment.MachineName
+            .Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_')
+            .ToArray());
+        if (string.IsNullOrWhiteSpace(cleanMachineName))
+            cleanMachineName = "HOST-PC";
+
+        var bytes = new byte[4];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        var num = Math.Abs(BitConverter.ToInt32(bytes, 0)) % 90000 + 10000;
+        return $"{cleanMachineName}-{num}";
+    }
+
+    /// <summary>
+    /// Gets the unique public Web Print URL for this Host PC.
+    /// Format: https://{domain}/{HostIdentifier} or https://{tunnel}/{HostIdentifier}
+    /// e.g. https://print.yourshop.com/DESKTOP-PLK2AIK-W-58291
+    /// </summary>
+    public string GetWebPrintUrl(string? tunnelUrl = null, string? localIp = null)
+    {
+        string baseUrl;
+        if (!string.IsNullOrWhiteSpace(CustomPublicUrl))
+        {
+            baseUrl = CustomPublicUrl.Trim().TrimEnd('/');
+        }
+        else if (!string.IsNullOrWhiteSpace(tunnelUrl))
+        {
+            baseUrl = tunnelUrl.Trim().TrimEnd('/');
+        }
+        else
+        {
+            var ip = !string.IsNullOrWhiteSpace(localIp) ? localIp : "127.0.0.1";
+            baseUrl = $"https://{ip}:{ServerPort}";
+        }
+
+        return $"{baseUrl}/{HostIdentifier}";
+    }
+
+    /// <summary>
     /// Generates a random 6-digit numeric PIN.
     /// </summary>
     public static string GeneratePin()
@@ -105,6 +180,29 @@ public class AppSettings
     {
         Directory.CreateDirectory(SettingsDir);
 
+        if (!File.Exists(SettingsFilePath))
+        {
+            // Check legacy folders to migrate existing setup seamlessly
+            var legacyPaths = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop", "settings.json"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "settings.json")
+            };
+
+            foreach (var legacyPath in legacyPaths)
+            {
+                if (File.Exists(legacyPath))
+                {
+                    try
+                    {
+                        File.Copy(legacyPath, SettingsFilePath, true);
+                        break;
+                    }
+                    catch { }
+                }
+            }
+        }
+
         if (File.Exists(SettingsFilePath))
         {
             try
@@ -115,6 +213,7 @@ public class AppSettings
                 if (settings != null)
                 {
                     settings.NormalizeSecrets();
+                    settings.Save();
                     return settings;
                 }
             }
@@ -155,6 +254,9 @@ public class AppSettings
 
         if (string.IsNullOrWhiteSpace(CurrentConnectionPin) || CurrentConnectionPin.Length != 6)
             CurrentConnectionPin = GeneratePin();
+
+        if (string.IsNullOrWhiteSpace(HostIdentifier))
+            HostIdentifier = GenerateHostIdentifier();
     }
 
     public static string GenerateSecureToken(int numBytes)

@@ -7,7 +7,7 @@ import retrofit2.Response
 import retrofit2.http.*
 
 /**
- * Retrofit API interface for communicating with the WiFi Print Server.
+ * Retrofit API interface for communicating with the Printora Server.
  */
 interface PrintApiService {
 

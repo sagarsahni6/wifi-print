@@ -11,20 +11,26 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.wifiprint.app"
+        applicationId = "com.printora.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 6
+        versionName = "2.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        resourceConfigurations += listOf("en")
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -35,7 +41,21 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources {
+            excludes += listOf(
+                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/*.version",
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/licenses/**",
+                "/META-INF/*.txt",
+                "/META-INF/*.properties",
+                "/META-INF/*.md",
+                "/META-INF/com.android.tools/**"
+            )
+        }
+    }
 }
 
 dependencies {
@@ -94,11 +114,11 @@ dependencies {
     // ML Kit Document Scanner (Adobe Scan-like live edge detection)
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 
-    // ML Kit Barcode Scanning (for QR code connection)
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    // ML Kit Barcode Scanning — unbundled via Google Play Services (drops 19.4MB native libbarhopper_v3.so)
+    implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
 
-    // ML Kit Text Recognition (for OCR in document scanner)
-    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // ML Kit Text Recognition — unbundled via Google Play Services (drops bundled OCR models)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

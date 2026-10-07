@@ -1,195 +1,183 @@
-# WiFi Print System — Setup Guide
+# Printora — Next-Gen Cloud Print & Scan Service
 
-## Overview
-A cross-platform Wi-Fi printing system: **Android phone → Wi-Fi → Windows PC → Printer**
+Printora is a modern, enterprise-grade cloud and local wireless printing ecosystem that connects mobile devices, web browsers, and PCs to any printer without driver configuration.
 
----
-
-## 📋 Prerequisites
-
-### Desktop Server (Windows)
-- Windows 10/11
-- .NET 8 SDK or Runtime ([download](https://dotnet.microsoft.com/download/dotnet/8.0))
-- At least one printer installed
-- **Optional**: LibreOffice (for DOCX→PDF conversion) ([download](https://www.libreoffice.org/download/))
-
-### Android Client
-- Android 8.0+ (API 26)
-- Android Studio Hedgehog or newer
-- Android SDK Platform 34 + Build Tools 34.0.0
-- Both devices on the **same Wi-Fi network**
+**Android Device / Web Browser → Local Wi-Fi or Cloud Relay → Printora Server (Windows PC) → Any Printer**
 
 ---
 
-## 🖥️ Desktop Server Setup
+## 🌟 Key Highlights
 
-### 1. Build & Run
-```bash
+- ☁️ **Cloud Print Service**: Built-in Cloud Relay powered by Cloudflare Tunnels (Zero-Trust Quick Tunnels and Named Tunnels). Print securely from anywhere outside your local Wi-Fi.
+- ⚡ **LAN Fast-Path Connect**: Instant auto-discovery via mDNS and UDP beacons with zero-latency direct socket printing on local networks.
+- 📱 **Native Android Client**: Built with Jetpack Compose, Material 3, dynamic theming, document scanner, camera QR pairing, batch printing, and live queue tracking.
+- 🌐 **Web Print Studio**: Print directly from any phone or browser by scanning a dynamic QR code — no app installation required. Includes rate limiting, file type safety, and PIN protection.
+- 🔒 **End-to-End Security**: TLS encryption, AES-256 encrypted payload transfers, device pairing approvals, and certificate fingerprint pinning.
+- 🔄 **Seamless Data Migration**: Automatic transparent migration from legacy `%LOCALAPPDATA%\SpoolDrop` and `WifiPrintServer` directories to `%LOCALAPPDATA%\Printora\`.
+
+---
+
+## 📋 System Requirements
+
+### Printora Server (Windows Desktop)
+- Windows 10 / 11 (64-bit)
+- .NET 8 SDK or Runtime ([Download .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0))
+- At least one printer configured in Windows
+- *(Optional)* LibreOffice for server-side DOCX/PPTX to PDF conversion ([Download](https://www.libreoffice.org/download/))
+
+### Printora Android App
+- Android 8.0+ (API 26+)
+- Google Play Services (for CameraX QR Scanner)
+
+---
+
+## 🖥️ Printora Desktop Server Setup
+
+### Option 1: One-Click Installer (Recommended)
+Download and run `PrintoraServer-Setup.exe` or execute `release-package\Install-Server.bat`.
+- Automatically installs to `%LOCALAPPDATA%\Programs\PrintoraServer\`
+- Creates Start Menu and Desktop shortcuts for **Printora Server**
+- Adds Windows Firewall inbound rule for port 5000
+- Migrates existing databases, certificates, and settings seamlessly
+
+### Option 2: Build & Run from Source
+```powershell
 cd WifiPrintServer
 dotnet restore
-dotnet build
+dotnet build WifiPrintServer.sln
 dotnet run --project WifiPrintServer
 ```
 
-### 2. First Launch
-- The server will:
-  - Generate a self-signed HTTPS certificate (stored in `%LOCALAPPDATA%\WifiPrintServer\`)
-  - Start listening on `https://0.0.0.0:5000`
-  - Begin broadcasting via mDNS on the local network
-  - Open the Dashboard window
+### Dashboard Overview
+| Page | Purpose |
+|------|---------|
+| **Dashboard** | Real-time statistics, active connections, Cloud Relay status, recent jobs |
+| **Print Queue** | Live job status, reordering, retrying, pausing, and cancelling jobs |
+| **Printers** | Installed printer discovery, paper sizes, color capabilities, and status |
+| **Devices** | Paired Android phones and authorized mobile devices |
+| **Web Print** | Interactive QR code generator, printable station posters, and protection rules |
+| **Logs** | Real-time event log viewer with search and log level filters |
+| **Settings** | Port configuration, Cloud Relay settings, tray minimization, auto-start |
 
-### 3. Dashboard Overview
-| Page | Description |
-|------|-------------|
-| **Dashboard** | Stats cards, PIN pairing, recent jobs |
-| **Print Queue** | All jobs with status, progress, timestamps |
-| **Printers** | All installed printers with capabilities |
-| **Devices** | Paired Android devices |
-| **Logs** | Real-time server event log |
-| **Settings** | Port, server name, auto-start, tray |
-
-### 4. Firewall
-Allow port 5000 (or your configured port) through Windows Firewall:
+### Firewall Configuration
+If running manually, ensure TCP port 5000 is permitted through Windows Firewall:
 ```powershell
-netsh advfirewall firewall add rule name="WiFi Print Server" dir=in action=allow protocol=TCP localport=5000
+netsh advfirewall firewall add rule name="Printora Server" dir=in action=allow protocol=TCP localport=5000
 ```
 
 ---
 
-## 📱 Android App Setup
+## 📱 Printora Android App Setup
 
-### 1. Open in Android Studio
-- Open the `WifiPrintApp` folder in Android Studio
-- Let Gradle sync complete
-- Build and run on your device/emulator
-- If you build from the command line, create `WifiPrintApp/local.properties` with:
-
-```properties
-sdk.dir=C:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+### 1. Build and Install
+1. Open the `WifiPrintApp` directory in Android Studio (Ladybug or newer).
+2. Allow Gradle sync to complete with JDK 17+.
+3. Build and deploy to your Android device or emulator:
+```powershell
+cd WifiPrintApp
+.\gradlew.bat assembleDebug
 ```
 
 ### 2. Connect to Server
-1. Ensure phone and PC are on the **same Wi-Fi network**
-2. Open the app → tap **"Connect"** or **"Find Server"**
-3. The app will auto-discover the server via mDNS
-4. If auto-discovery fails, tap **"Enter IP Manually"** and enter the PC's IP
+1. **Local Wi-Fi Auto-Discovery**: Open Printora. If your phone and PC are on the same Wi-Fi, Printora Server is detected automatically.
+2. **Cloud Relay Connect**: Paste your Printora Cloud Relay URL (`https://*.trycloudflare.com` or custom domain) to print remotely over cellular/LTE.
+3. **QR Code Pairing**: Tap the QR icon and scan the connection QR code displayed on the Printora PC Dashboard.
 
-### 3. Pair the Device
-1. On the **PC Dashboard**, click **"Generate PIN"**
-2. On the **Android app**, enter the 6-digit PIN
-3. Tap **"Pair Device"**
-4. The app receives a JWT token and saves it locally
-
-### 4. Print a File
-1. Tap **"Print"** in the bottom nav
-2. Tap **"Choose File"** → select PDF, image, DOCX, or text file
-3. Select a printer from the dropdown
-4. Configure settings (copies, orientation, color, quality, duplex)
-5. Tap **"Print"**
-6. Monitor progress in the **Jobs** tab
+### 3. Print Documents & Photos
+1. Tap **Print** in the bottom navigation.
+2. Select files (PDF, images, text documents) or capture a new scan using the built-in Document Scanner.
+3. Choose your target printer and set copies, orientation, page range, color mode, and duplex options.
+4. Tap **Send to Printora**. Track print progress in real time under the **Jobs** tab.
 
 ---
 
-## 🔌 API Reference
+## 🔌 Core API Endpoints
 
-**Base URL**: `https://<server-ip>:5000`
+**Base URL**: `https://<server-ip>:5000` or `https://<cloud-relay-tunnel>.trycloudflare.com`
 
-### Authentication
+### Authentication & Pairing
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/auth/pair` | POST | None | Exchange PIN for JWT token |
-| `/api/auth/status` | GET | JWT | Validate current token |
-| `/api/auth/devices` | GET | JWT | List paired devices |
+| `/api/auth/request` | POST | None | Request pairing approval from desktop user |
+| `/api/auth/pair` | POST | None | Exchange 6-digit PIN for JWT token |
+| `/api/auth/status` | GET | JWT | Validate authentication session |
+| `/api/auth/devices` | GET | JWT | List authorized client devices |
 
-### Printers
+### Printers & Capabilities
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/printers` | GET | JWT | List all installed printers |
-| `/api/printers/{id}` | GET | JWT | Get printer details |
+| `/api/printers` | GET | JWT | List all installed printers with status |
+| `/api/printers/{id}` | GET | JWT | Fetch detailed printer capabilities and paper trays |
 
 ### Print Jobs
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/print` | POST | JWT | Upload file + create job (multipart) |
-| `/api/jobs` | GET | JWT | List all jobs (filter: `?status=Pending`) |
-| `/api/jobs/{id}` | GET | JWT | Get job details |
-| `/api/jobs/{id}/cancel` | POST | JWT | Cancel a job |
+| `/api/print` | POST | JWT | Upload document and submit print job (multipart) |
+| `/api/jobs` | GET | JWT | List all print jobs (supports status filter) |
+| `/api/jobs/{id}` | GET | JWT | Get live status and metadata for a specific job |
+| `/api/jobs/{id}/cancel` | POST | JWT | Cancel a queued or active job |
 | `/api/jobs/{id}/retry` | POST | JWT | Retry a failed job |
 
-### WebSocket (SignalR)
-| Endpoint | Description |
-|----------|-------------|
-| `/ws/status` | Real-time job updates (pass `?access_token=JWT`) |
+### Web Print Studio (Public Browser Gateway)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/web-print` | GET | Responsive browser UI for mobile scanning & printing |
+| `/api/web-print/upload` | POST | Anti-abuse protected upload endpoint for web clients |
 
-### Health Check
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/status` | GET | None | Server health check |
+### Real-Time Updates
+| Endpoint | Protocol | Description |
+|----------|----------|-------------|
+| `/ws/status` | SignalR | Real-time queue, printer status, and job event streaming |
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Structure
 
 ```
 WIFI PRINT/
-├── WifiPrintServer/           # Desktop server (.NET 8 / WPF)
-│   ├── WifiPrintServer.sln
-│   └── WifiPrintServer/
-│       ├── Program.cs         # Kestrel + WPF host
-│       ├── App.xaml(.cs)      # WPF app + system tray
-│       ├── MainWindow.xaml    # Dashboard UI
-│       ├── Controllers/       # REST API endpoints
-│       ├── Services/          # Business logic
-│       ├── Models/            # Data models
-│       └── Hubs/              # SignalR hub
+├── WifiPrintServer/                # Printora Windows Desktop Server & Services
+│   ├── WifiPrintServer.sln         # Visual Studio Solution (.NET 8)
+│   ├── WifiPrintServer/            # Core Server Application (WPF + Kestrel)
+│   │   ├── Program.cs              # ASP.NET Core & WPF bootstrap
+│   │   ├── App.xaml(.cs)           # Application lifecycle & system tray
+│   │   ├── MainWindow.xaml(.cs)    # Modern Dark/Light Desktop Dashboard
+│   │   ├── Controllers/            # REST API & Web Print controllers
+│   │   ├── Services/               # Printer, Queue, Tunnel, Security services
+│   │   ├── Models/                 # Data contracts & storage configuration
+│   │   └── Hubs/                   # SignalR WebSocket hubs
+│   ├── WifiPrintServer.Tests/      # Automated test suite (xUnit)
+│   └── WifiPrintInstaller/         # Standalone self-contained setup builder
 │
-└── WifiPrintApp/              # Android client (Kotlin)
-    └── app/src/main/java/com/wifiprint/app/
-        ├── WifiPrintApp.kt    # Application + Hilt
-        ├── di/                # Dependency injection
-        ├── data/              # Models, API, DB, Repository
-        ├── discovery/         # mDNS/NSD discovery
-        ├── ui/                # Compose screens
-        └── workers/           # WorkManager upload
+├── WifiPrintApp/                   # Printora Android Mobile Client (Kotlin)
+│   ├── app/src/main/
+│   │   ├── AndroidManifest.xml     # Permissions, activities, file providers
+│   │   └── java/com/wifiprint/app/
+│   │       ├── data/               # Room database, API services, repositories
+│   │       ├── discovery/          # mDNS NSD & UDP beacon discovery
+│   │       ├── ui/                 # Jetpack Compose UI (Material 3)
+│   │       └── workers/            # Background WorkManager upload jobs
+│
+└── release-package/                # Packaged installer and server setup scripts
 ```
 
 ---
 
-## 🔐 Security Notes
-- Communication uses **HTTPS with self-signed certificate**
-- Devices pair via **desktop approval** or legacy PIN flow
-- All API calls after pairing use **JWT bearer tokens**
-- The Android app now pins the server certificate fingerprint after first approval
-- Tokens expire after 365 days by default
-- Device-management endpoints are restricted to local desktop access
-- Job APIs are scoped to the authenticated device by default
+## ✅ Quality & Verification
 
-## ✅ Verification
-
-### Windows Server
-```bash
-dotnet build WifiPrintServer/WifiPrintServer.sln
+### Run Server Tests
+```powershell
 dotnet test WifiPrintServer/WifiPrintServer.sln
 ```
+*Current test suite: 22 tests passing (unit tests for queue management, authentication, encryption, and Web Print protection).*
 
-### Android App
-```bash
+### Run Android Tests & Build
+```powershell
 cd WifiPrintApp
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat assembleDebug
 ```
 
-## 🤖 CI
-- GitHub Actions workflow: `.github/workflows/ci.yml`
-- Server job: restore, build, and test the .NET solution on Windows
-- Android job: install SDK 34, assemble debug, run unit tests, and run lint
+---
 
-## ⚠️ Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Server not discovered | Ensure same Wi-Fi network, check firewall |
-| "Certificate error" | App trusts self-signed certs by default |
-| DOCX won't convert | Install LibreOffice on the server PC |
-| Upload timeout | Check file size (max 100MB default) |
-| Printer not found | Verify printer is installed in Windows |
+## 📄 License
+Printora is distributed under the proprietary license of the Printora Team. All rights reserved.

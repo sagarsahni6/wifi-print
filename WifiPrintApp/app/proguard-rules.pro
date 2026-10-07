@@ -22,7 +22,3 @@
 
 # Models
 -keep class com.wifiprint.app.data.models.** { *; }
-
-# MLKit
--keep class com.google.mlkit.** { *; }
--keep class com.google.android.gms.** { *; }

@@ -50,6 +50,23 @@ class HomeViewModel @Inject constructor(
         // Start WiFi monitoring
         networkMonitor.startMonitoring()
 
+        // Observe repository connection status to keep UI in sync immediately
+        viewModelScope.launch {
+            repository.connectionStatus.collect { status ->
+                if (status.isConnected) {
+                    _uiState.update {
+                        it.copy(
+                            isConnected = true,
+                            isConnecting = false,
+                            serverName = status.serverName,
+                            serverIp = status.serverUrl,
+                            connectionMessage = null
+                        )
+                    }
+                }
+            }
+        }
+
         // Observe local job history
         viewModelScope.launch {
             repository.getLocalJobs().collect { jobs ->
@@ -165,12 +182,13 @@ class HomeViewModel @Inject constructor(
                     val verified = repository.verifyConnection()
                     if (verified) {
                         Log.d(TAG, "Auto-connect verified with saved server: ${savedServer.name}")
+                        val activeUrl = if (!savedServer.tunnelUrl.isNullOrBlank()) savedServer.tunnelUrl else "${savedServer.ipAddress}:${savedServer.port}"
                         _uiState.update {
                             it.copy(
                                 isConnected = true,
                                 isConnecting = false,
                                 serverName = savedServer.name,
-                                serverIp = "${savedServer.ipAddress}:${savedServer.port}",
+                                serverIp = activeUrl,
                                 connectionMessage = null
                             )
                         }
@@ -182,7 +200,7 @@ class HomeViewModel @Inject constructor(
             }
 
             // 2. Scan network for servers on the SAME local Wi-Fi subnet and auto-connect
-            Log.d(TAG, "Scanning for WiFi Print servers on the same local network...")
+            Log.d(TAG, "Scanning for Printora servers on the same local network...")
             discoveryManager.startDiscovery()
 
             var autoConnected = false
@@ -236,9 +254,36 @@ class HomeViewModel @Inject constructor(
 
     /**
      * Called when the user returns from discovery/pairing screen to refresh connection state.
+     * First checks if the repository already has an active API service (e.g. set by ConnectViewModel),
+     * and verifies it directly. Falls back to the full auto-connect scan only if needed.
      */
     fun refreshConnectionStatus() {
-        tryAutoConnect()
+        viewModelScope.launch {
+            // Fast path: if the repository already holds a live connection or has a saved server, verify it immediately
+            val server = repository.getLastPairedServer()
+            if (repository.isConnected() || server != null) {
+                if (server != null && !repository.isConnected()) {
+                    repository.connectToServer(server)
+                }
+                val verified = try { repository.verifyConnection() } catch (_: Exception) { false }
+                if (verified) {
+                    val currentS = repository.getLastPairedServer()
+                    val activeUrl = if (!currentS?.tunnelUrl.isNullOrBlank()) currentS!!.tunnelUrl!! else if (currentS != null) "${currentS.ipAddress}:${currentS.port}" else ""
+                    _uiState.update {
+                        it.copy(
+                            isConnected = true,
+                            isConnecting = false,
+                            serverName = currentS?.name ?: "Connected",
+                            serverIp = activeUrl,
+                            connectionMessage = null
+                        )
+                    }
+                    return@launch
+                }
+            }
+            // Slow path: full auto-connect scan
+            tryAutoConnect()
+        }
     }
 
     override fun onCleared() {

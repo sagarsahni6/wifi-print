@@ -140,7 +140,7 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            "SpoolDrop",
+                            "Printora",
                             style = MaterialTheme.typography.headlineLarge.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = (-1).sp
@@ -149,7 +149,7 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Cloud Print & Scan",
+                            "Cloud Print Service",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.75f)
                         )
@@ -737,7 +737,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Download & install the free SpoolDrop Server on your Windows PC to start printing wirelessly.",
+                                "Download & install the free Printora Server on your Windows PC to print from anywhere via Cloud or local Wi-Fi.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center

@@ -8,6 +8,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -230,105 +235,153 @@ private fun MainTabScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Brand Logo & Title
+                        // Brand Logo & Title with Gradient Avatar & Pro Badge
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Primary.copy(alpha = 0.12f),
-                                modifier = Modifier.size(38.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF4338CA), Color(0xFF6366F1), Color(0xFF8B5CF6))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Filled.Print,
-                                        contentDescription = null,
-                                        tint = Primary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
+                                Icon(
+                                    Icons.Filled.Print,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                             Spacer(Modifier.width(10.dp))
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        "SpoolDrop",
+                                        "Printora",
                                         style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
+                                            fontWeight = FontWeight.ExtraBold,
                                             letterSpacing = (-0.3).sp
                                         ),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
+                                    Spacer(Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Primary.copy(alpha = 0.14f)
+                                    ) {
+                                        Text(
+                                            "v2.2",
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Primary,
+                                            fontSize = 9.sp
+                                        )
+                                    }
                                 }
                                 Text(
-                                    if (homeState.isConnected) homeState.serverName else "Wireless Printing & Scanning",
+                                    if (homeState.isConnected) "● Ready • ${homeState.serverName}" else "Wireless Print & Scan",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (homeState.isConnected) Green500 else MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
-                        // Right actions: Connection Pill + QR Icon + Settings Icon
+                        // Right actions: Glowing Connection Pill + Glassmorphic QR & Settings
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            val haptic = LocalHapticFeedback.current
+
                             // Connection beacon pill
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
-                                color = if (homeState.isConnected) Green400.copy(alpha = 0.12f) else Orange400.copy(alpha = 0.12f),
-                                modifier = Modifier.clickable {
-                                    if (!homeState.isConnected) onNavigateToDiscovery()
-                                }
+                                color = if (homeState.isConnected) Green500.copy(alpha = 0.14f) else Orange500.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, if (homeState.isConnected) Green500.copy(alpha = 0.45f) else Orange500.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onNavigateToDiscovery()
+                                    }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
                                     val pulse = rememberInfiniteTransition(label = "pulse")
-                                    val alpha by pulse.animateFloat(0.4f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
+                                    val alpha by pulse.animateFloat(0.35f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
                                     Box(
                                         Modifier
-                                            .size(8.dp)
+                                            .size(7.dp)
                                             .clip(CircleShape)
                                             .background(
-                                                if (homeState.isConnected) Green400.copy(alpha = alpha) else Orange400
+                                                if (homeState.isConnected) Green500.copy(alpha = alpha) else Orange500
                                             )
                                     )
                                     Text(
-                                        if (homeState.isConnected) "Online" else "Offline",
+                                        if (homeState.isConnected) (if (homeState.serverIp.contains("cloudflare", ignoreCase = true) || homeState.serverIp.contains("tunnel", ignoreCase = true)) "Cloud Ready" else "LAN Ready") else "Connect",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (homeState.isConnected) Green400 else Orange400,
-                                        fontWeight = FontWeight.Bold
+                                        color = if (homeState.isConnected) Green500 else Orange500,
+                                        fontWeight = FontWeight.ExtraBold
                                     )
                                 }
                             }
 
-                            // Quick QR scan shortcut
-                            IconButton(
-                                onClick = onNavigateToQrScanner,
+                            // Glassmorphic QR scan shortcut
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                                 modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    Icons.Filled.QrCodeScanner,
-                                    contentDescription = "Scan QR",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onNavigateToQrScanner()
+                                        }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.QrCodeScanner,
+                                        contentDescription = "Scan QR Code to Connect",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
 
-                            // Settings shortcut
-                            IconButton(
-                                onClick = onNavigateToSettings,
+                            // Glassmorphic Settings shortcut
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                                 modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    Icons.Filled.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onNavigateToSettings()
+                                        }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Settings,
+                                        contentDescription = "Open Settings",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -349,24 +402,31 @@ private fun MainTabScreen(
 
                 navItems.forEach { (label, icon, index) ->
                     val isSelected = pagerState.currentPage == index
+                    val iconScale by animateFloatAsState(
+                        targetValue = if (isSelected) 1.15f else 1.0f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "nav_icon_scale"
+                    )
                     NavigationBarItem(
                         selected = isSelected,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(index) }
                         },
                         icon = {
-                            if (index == 0 && homeState.activeJobCount > 0) {
-                                BadgedBox(
-                                    badge = {
-                                        Badge(containerColor = Primary, contentColor = Color.White) {
-                                            Text("${homeState.activeJobCount}")
+                            Box(modifier = Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
+                                if (index == 0 && homeState.activeJobCount > 0) {
+                                    BadgedBox(
+                                        badge = {
+                                            Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White) {
+                                                Text("${homeState.activeJobCount}")
+                                            }
                                         }
+                                    ) {
+                                        Icon(icon, contentDescription = label)
                                     }
-                                ) {
+                                } else {
                                     Icon(icon, contentDescription = label)
                                 }
-                            } else {
-                                Icon(icon, contentDescription = label)
                             }
                         },
                         label = {
@@ -377,11 +437,11 @@ private fun MainTabScreen(
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Primary,
-                            selectedTextColor = Primary,
-                            indicatorColor = Primary.copy(alpha = 0.12f),
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                            selectedIconColor = Color.White,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                         )
                     )
                 }
@@ -498,33 +558,36 @@ private fun MoreTab(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                homeState.serverName,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.width(6.dp))
+                        Text(
+                            homeState.serverName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = Green400.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    "Ready",
+                                    "Online",
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Green400,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            Text(
+                                if (homeState.serverIp.isNotEmpty()) homeState.serverIp else "Local WiFi Network",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Text(
-                            if (homeState.serverIp.isNotEmpty()) homeState.serverIp else "Local WiFi Network",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                     OutlinedButton(
                         onClick = onDiscovery,
@@ -755,12 +818,12 @@ private fun MoreTab(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "SpoolDrop Server for PC",
+                            "Printora Server for PC",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "Free Windows companion app to share USB/network printers wirelessly.",
+                            "Free Windows companion app to share USB/network printers over Cloud & Wi-Fi.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -799,7 +862,7 @@ private fun MoreTab(
                     }
                     Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
-                Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                Divider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -809,14 +872,14 @@ private fun MoreTab(
                     Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("SpoolDrop v2.0", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text("AES-256 Cloud Relay & LAN Protocol Active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Printora v2.2.2 Pro", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Next-Gen Cloud Print Service & Fast LAN Active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(80.dp))
     }
 }
 
@@ -834,7 +897,8 @@ private fun StatChip(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
@@ -884,7 +948,8 @@ private fun ActionCard(
         modifier = modifier.height(104.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
@@ -950,6 +1015,7 @@ private fun RecentJobCard(job: PrintJob, onClick: () -> Unit) {
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(

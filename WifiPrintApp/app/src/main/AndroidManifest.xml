@@ -108,10 +108,10 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <activity
-            android:name="com.yalantis.ucrop.UCropActivity"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+        <!-- Google Play Services vision dependencies: barcode & OCR models loaded dynamically -->
+        <meta-data
+            android:name="com.google.android.gms.vision.DEPENDENCIES"
+            android:value="barcode,ocr" />
 
     </application>
 </manifest>

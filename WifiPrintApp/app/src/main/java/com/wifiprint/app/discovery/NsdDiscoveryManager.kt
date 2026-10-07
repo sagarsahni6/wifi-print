@@ -159,7 +159,7 @@ class NsdDiscoveryManager(context: Context) {
                         if (json.optString("service") == "wifiprint") {
                             val ip = json.optString("ip", packet.address?.hostAddress ?: "")
                             val port = json.optInt("port", 5000)
-                            val name = json.optString("name", "SpoolDrop Server")
+                            val name = json.optString("name", "Printora Server")
 
                             if (ip.isNotBlank()) {
                                 val isSameNet = networkMonitor.isSameLocalSubnet(ip)
@@ -192,7 +192,7 @@ class NsdDiscoveryManager(context: Context) {
         }
     }
 
-    /** Start scanning for WiFi Print servers on the local network via mDNS and UDP beacon. */
+    /** Start scanning for Printora servers on the local network via mDNS and UDP beacon. */
     fun startDiscovery() {
         if (isDiscovering) return
         try {

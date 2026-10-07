@@ -369,5 +369,6 @@ public class PendingApproval
     public string IpAddress { get; set; } = string.Empty;
     public bool ConnectedViaTunnel { get; set; } = false;
     public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
+    [System.Text.Json.Serialization.JsonIgnore]
     public TaskCompletionSource<bool> CompletionSource { get; } = new();
 }

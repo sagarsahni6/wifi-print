@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using WifiPrintServer.Data;
-using WifiPrintServer.Hubs;
 using WifiPrintServer.Models;
 using WifiPrintServer.Services;
 
@@ -22,7 +21,6 @@ public partial class Program
     public static PrintQueueManager? QueueManager { get; private set; }
     public static AuthService? AuthServiceInstance { get; private set; }
     public static DiscoveryService? Discovery { get; private set; }
-    public static StatusBroadcaster? Broadcaster { get; private set; }
     public static PrinterService? PrinterServiceInstance { get; private set; }
     public static X509Certificate2? ServerCertificate { get; private set; }
     public static TunnelService? TunnelServiceInstance { get; private set; }
@@ -65,18 +63,24 @@ public partial class Program
         builder.Services.AddSingleton(Settings);
         builder.Services.AddDbContextFactory<ServerStateContext>(options =>
         {
-            options.UseSqlite($"Data Source={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "wifiprint.db")}");
+            var dbPath = Path.Combine(AppSettings.AppDataDir, "printora.db");
+            var legacyDbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "wifiprint.db");
+            if (!File.Exists(dbPath) && File.Exists(legacyDbPath))
+            {
+                try { File.Copy(legacyDbPath, dbPath, true); } catch { }
+            }
+            options.UseSqlite($"Data Source={dbPath}");
         });
         builder.Services.AddSingleton<ServerStateStore>();
         builder.Services.AddSingleton<PrinterService>();
         builder.Services.AddSingleton<PrintQueueManager>();
         builder.Services.AddSingleton<FileProcessingService>();
         builder.Services.AddSingleton<AuthService>();
-        builder.Services.AddSingleton<StatusBroadcaster>();
         builder.Services.AddSingleton<TunnelService>();
+        builder.Services.AddSingleton<WebPrintProtectionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<PrintQueueManager>());
 
-        // Add controllers + SignalR
+        // Add controllers
         builder.Services.AddControllers()
             .AddJsonOptions(options =>
             {
@@ -87,7 +91,6 @@ public partial class Program
                 options.JsonSerializerOptions.PropertyNamingPolicy =
                     System.Text.Json.JsonNamingPolicy.CamelCase;
             });
-        builder.Services.AddSignalR();
 
         // Enable CORS for web apps and admin dashboard
         builder.Services.AddCors(options =>
@@ -163,12 +166,10 @@ public partial class Program
         WebApp.UseAuthentication();
         WebApp.UseAuthorization();
         WebApp.MapControllers();
-        WebApp.MapHub<PrintStatusHub>("/ws/status");
 
         // Resolve singletons for WPF access
         QueueManager = WebApp.Services.GetRequiredService<PrintQueueManager>();
         AuthServiceInstance = WebApp.Services.GetRequiredService<AuthService>();
-        Broadcaster = WebApp.Services.GetRequiredService<StatusBroadcaster>();
         PrinterServiceInstance = WebApp.Services.GetRequiredService<PrinterService>();
         TunnelServiceInstance = WebApp.Services.GetRequiredService<TunnelService>();
 
@@ -189,13 +190,6 @@ public partial class Program
             });
         }
 
-        // Wire up queue events to SignalR broadcasts
-        QueueManager.OnJobStatusChanged += async update =>
-        {
-            try { await Broadcaster.BroadcastJobUpdate(update); }
-            catch { /* ignore broadcast failures */ }
-        };
-
         // Start mDNS discovery
         Discovery = new DiscoveryService(
             WebApp.Services.GetRequiredService<ILogger<DiscoveryService>>(),
@@ -214,12 +208,27 @@ public partial class Program
     /// </summary>
     private static X509Certificate2 GetOrCreateSelfSignedCert()
     {
-        string certDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WifiPrintServer");
+        string certDir = AppSettings.AppDataDir;
         Directory.CreateDirectory(certDir);
         string certPath = Path.Combine(certDir, "server.pfx");
         string password = Settings.CertificatePassword;
+
+        // Migrate legacy certificate if available
+        if (!File.Exists(certPath))
+        {
+            var legacyCertPaths = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop", "server.pfx"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "server.pfx")
+            };
+            foreach (var legacy in legacyCertPaths)
+            {
+                if (File.Exists(legacy))
+                {
+                    try { File.Copy(legacy, certPath, true); break; } catch { }
+                }
+            }
+        }
 
         if (File.Exists(certPath))
         {
@@ -233,7 +242,7 @@ public partial class Program
         // Generate new self-signed cert
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest(
-            "CN=WifiPrintServer, O=WifiPrint, OU=Local",
+            "CN=PrintoraServer, O=Printora, OU=Local",
             rsa,
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);

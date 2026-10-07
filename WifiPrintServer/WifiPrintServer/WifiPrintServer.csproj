@@ -8,18 +8,20 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
 
-    <AssemblyName>WifiPrintServer</AssemblyName>
+    <AssemblyName>PrintoraServer</AssemblyName>
     <RootNamespace>WifiPrintServer</RootNamespace>
-    <Version>1.0.0</Version>
-    <Authors>SpoolDrop Team</Authors>
-    <Description>SpoolDrop Server - Cloud Print &amp; Scan from Android</Description>
+    <Version>2.0.0</Version>
+    <Authors>Printora Team</Authors>
+    <Description>Printora Server - Cloud Print &amp; Scan Service</Description>
+
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- ASP.NET Core (Kestrel web server) -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Docnet.Core" Version="2.6.0" />
-    <PackageReference Include="itext7.bouncy-castle-adapter" Version="8.0.2" />
     
     <!-- JWT Authentication -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
@@ -27,12 +29,12 @@
     <!-- mDNS/Zeroconf discovery -->
     <PackageReference Include="Makaretu.Dns.Multicast" Version="0.27.0" />
     
-    <!-- PDF processing -->
-    <PackageReference Include="itext7" Version="8.0.2" />
-    
     <!-- Entity Framework Core + SQLite for persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     
     <!-- JSON serialization (using built-in System.Text.Json) -->
     

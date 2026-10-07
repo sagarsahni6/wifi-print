@@ -16,3 +16,4 @@ global using Microsoft.AspNetCore.Authorization;
 global using Microsoft.AspNetCore.Hosting;
 global using Microsoft.AspNetCore.Server.Kestrel.Core;
 global using Microsoft.AspNetCore.Server.Kestrel.Https;
+global using WifiPrintServer.Models;

@@ -20,6 +20,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.style.TextOverflow
+
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +63,7 @@ fun PrintScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     // SAF file picker — single file
     val filePicker = rememberLauncherForActivityResult(
@@ -126,7 +136,10 @@ fun PrintScreen(
     }
 
     LaunchedEffect(state.success) {
-        if (state.success) onJobCreated()
+        if (state.success) {
+            onJobCreated()
+            viewModel.resetSuccess()
+        }
     }
 
     LaunchedEffect(isConnected) {
@@ -227,13 +240,13 @@ fun PrintScreen(
             }
         }
 
-        // Active Populated File Preview Card
+        // Active Populated File Preview Bento Card
         if (state.selectedFileName.isNotEmpty() && !state.isBatchMode) {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                border = BorderStroke(1.5.dp, Primary.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -302,11 +315,30 @@ fun PrintScreen(
                                 )
                             }
                         }
-                        IconButton(
-                            onClick = { viewModel.setFile(android.net.Uri.EMPTY, "") },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(Icons.Filled.Close, "Remove File", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                        addCategory(Intent.CATEGORY_OPENABLE)
+                                        type = "*/*"
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                            "application/pdf", "image/jpeg", "image/png", "text/plain",
+                                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                        ))
+                                    }
+                                    filePicker.launch(intent)
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Filled.Edit, "Change File", tint = Primary, modifier = Modifier.size(20.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.setFile(android.net.Uri.EMPTY, "") },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Filled.Close, "Remove File", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                            }
                         }
                     }
                 }
@@ -368,7 +400,7 @@ fun PrintScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(1.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -395,100 +427,173 @@ fun PrintScreen(
             }
         }
 
-        // Browse / Drop Zone Card
+        // ─── Hero Document Intake Zone (Empty State) ────────────────────────
+        if (state.selectedFileName.isEmpty() && state.selectedFiles.isEmpty()) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    viewModel.clearFiles()
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "*/*"
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                            "application/pdf", "image/jpeg", "image/png", "text/plain",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ))
-                    }
-                    filePicker.launch(intent)
-                },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, Primary.copy(alpha = 0.3f))
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(
+                1.5.dp,
+                Brush.horizontalGradient(
+                    listOf(
+                        Primary.copy(alpha = 0.5f),
+                        Secondary.copy(alpha = 0.35f),
+                        Primary.copy(alpha = 0.2f)
+                    )
+                )
+            )
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Primary.copy(alpha = 0.08f),
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Primary.copy(alpha = 0.12f),
-                    modifier = Modifier.size(46.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.CloudUpload, null, tint = Primary, modifier = Modifier.size(24.dp))
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    if (state.selectedFileName.isNotEmpty() || state.selectedFiles.isNotEmpty()) "Tap to Select Another Document"
-                    else "Select File or Tap to Browse",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "Supports PDF, JPG, PNG, DOCX, XLSX (up to 50MB)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = {
-                            viewModel.clearFiles()
-                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                addCategory(Intent.CATEGORY_OPENABLE)
-                                type = "*/*"
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                                    "application/pdf", "image/jpeg", "image/png", "text/plain",
-                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                ))
-                            }
-                            filePicker.launch(intent)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    val infiniteTransition = rememberInfiniteTransition(label = "hero_pulse")
+                    val pulseScale by infiniteTransition.animateFloat(
+                        initialValue = 1f,
+                        targetValue = 1.06f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1500, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "scale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale }
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF4F46E5), Color(0xFF6366F1), Color(0xFF8B5CF6))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Single File", style = MaterialTheme.typography.labelMedium)
+                        Icon(
+                            Icons.Filled.CloudUpload,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
                     }
-                    FilledTonalButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                                addCategory(Intent.CATEGORY_OPENABLE)
-                                type = "*/*"
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                                    "application/pdf", "image/jpeg", "image/png", "text/plain",
-                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                ))
-                            }
-                            batchFilePicker.launch(intent)
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+
+                    Spacer(Modifier.height(14.dp))
+
+                    Text(
+                        if (state.selectedFileName.isNotEmpty() || state.selectedFiles.isNotEmpty())
+                            "Tap to Select Another Document"
+                        else
+                            "Select Document to Print",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.2).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    Text(
+                        "Instant wireless queue & direct high-speed spooling",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Format Badge Capsules
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.FileCopy, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Batch Mode", style = MaterialTheme.typography.labelMedium)
+                        FormatPill("PDF", Color(0xFFE53935))
+                        FormatPill("DOCX", Color(0xFF2563EB))
+                        FormatPill("PHOTOS", Color(0xFF059669))
+                        FormatPill("TXT", Color(0xFFD97706))
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Dual Quick Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.clearFiles()
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "*/*"
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                        "application/pdf", "image/jpeg", "image/png", "text/plain",
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    ))
+                                }
+                                filePicker.launch(intent)
+                            },
+                            modifier = Modifier.weight(1f).height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Primary
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                        ) {
+                            Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Browse File", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        }
+
+                        FilledTonalButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "*/*"
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                                        "application/pdf", "image/jpeg", "image/png", "text/plain",
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    ))
+                                }
+                                batchFilePicker.launch(intent)
+                            },
+                            modifier = Modifier.weight(1f).height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Filled.FileCopy, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Batch Queue", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
+        }
         }
 
         // ── Inline Auto-Preview ─────────────────────────────────────
@@ -500,7 +605,7 @@ fun PrintScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(1.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -555,7 +660,7 @@ fun PrintScreen(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(1.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -597,7 +702,7 @@ fun PrintScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier.fillMaxWidth().menuAnchor()
                         ) {
                             Row(
@@ -656,42 +761,58 @@ fun PrintScreen(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(1.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                // Copies
+                // Tactile Copies Stepper
                 SettingRow("Copies") {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .padding(2.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                            .padding(4.dp)
                     ) {
-                        IconButton(
-                            onClick = {
-                                if (state.settings.copies > 1)
-                                    viewModel.updateSettings(state.settings.copy(copies = state.settings.copies - 1))
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) { Icon(Icons.Filled.Remove, "Decrease", modifier = Modifier.size(16.dp)) }
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (state.settings.copies > 1) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.updateSettings(state.settings.copy(copies = state.settings.copies - 1))
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            ) { Icon(Icons.Filled.Remove, "Decrease", modifier = Modifier.size(18.dp)) }
+                        }
                         Text(
                             "${state.settings.copies}",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(horizontal = 12.dp)
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         )
-                        IconButton(
-                            onClick = {
-                                viewModel.updateSettings(state.settings.copy(copies = state.settings.copies + 1))
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) { Icon(Icons.Filled.Add, "Increase", modifier = Modifier.size(16.dp)) }
+                        Surface(
+                            shape = CircleShape,
+                            color = Primary,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.updateSettings(state.settings.copy(copies = state.settings.copies + 1))
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            ) { Icon(Icons.Filled.Add, "Increase", tint = Color.White, modifier = Modifier.size(18.dp)) }
+                        }
                     }
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Page Range
                 SettingRow("Pages") {
@@ -723,7 +844,7 @@ fun PrintScreen(
                     )
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Color Mode
                 SettingRow("Color Mode") {
@@ -737,7 +858,7 @@ fun PrintScreen(
                     )
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Paper Size
                 SettingRow("Paper Size") {
@@ -748,7 +869,7 @@ fun PrintScreen(
                     )
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Orientation
                 SettingRow("Orientation") {
@@ -759,7 +880,7 @@ fun PrintScreen(
                     )
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Two-sided Duplex
                 SettingRow("Two-Sided (Duplex)") {
@@ -769,7 +890,7 @@ fun PrintScreen(
                     )
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 8.dp), color = DividerColor)
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Quality
                 SettingRow("Print Quality") {
@@ -814,44 +935,57 @@ fun PrintScreen(
                 if (state.isPdfLocked && !state.isPasswordVerified) {
                     viewModel.setShowPasswordDialog(true)
                 } else {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     viewModel.submitPrintJob()
                 }
             },
             enabled = (state.selectedFileUri != null || state.selectedFiles.isNotEmpty()) &&
                 state.selectedPrinter != null && !state.isUploading,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Primary,
-                disabledContainerColor = Primary.copy(alpha = 0.4f)
+                disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
             ),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 6.dp)
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 8.dp)
         ) {
             if (state.isUploading) {
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp, color = MaterialTheme.colorScheme.onPrimary)
                 Spacer(Modifier.width(12.dp))
                 if (state.isBatchMode) {
-                    Text("Uploading ${state.batchProgress}/${state.batchTotal}...", fontWeight = FontWeight.Bold)
+                    Text("Spooling Batch (${state.batchProgress}/${state.batchTotal})...", fontWeight = FontWeight.ExtraBold)
                 } else {
-                    Text("Uploading to Printer...", fontWeight = FontWeight.Bold)
+                    Text("Spooling to Printer...", fontWeight = FontWeight.ExtraBold)
                 }
             } else {
-                Icon(
-                    if (state.isPdfLocked && !state.isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Print,
-                    null,
-                    modifier = Modifier.size(22.dp)
-                )
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.2f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (state.isPdfLocked && !state.isPasswordVerified) Icons.Filled.LockOpen else Icons.Filled.Print,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
                 Spacer(Modifier.width(10.dp))
                 val label = when {
                     state.isBatchMode -> "Start Batch Print (${state.selectedFiles.size} Files)"
                     state.isPdfLocked && !state.isPasswordVerified -> "Unlock & Print Document"
-                    else -> "Start Printing"
+                    state.selectedFileUri == null -> "Select Document to Print"
+                    else -> "Send to Printer (${state.settings.copies} ${if (state.settings.copies == 1) "Copy" else "Copies"})"
                 }
-                Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text(label, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium, color = Color.White)
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(80.dp))
     }
 }
 
@@ -949,6 +1083,7 @@ private fun InlinePdfPreview(
     }
 
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
     var pageCount by remember(uri) { mutableStateOf(0) }
     var currentPage by remember(uri) { mutableStateOf(0) }
@@ -1088,6 +1223,7 @@ private fun InlineImagePreview(uri: Uri) {
 @Composable
 private fun InlineTextPreview(uri: Uri) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var textContent by remember(uri) { mutableStateOf("Loading...") }
 
     LaunchedEffect(uri) {
@@ -1217,4 +1353,22 @@ fun PdfPasswordDialog(
         },
         shape = RoundedCornerShape(20.dp)
     )
+}
+
+@Composable
+private fun FormatPill(label: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.12f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.25f))
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = color,
+            fontSize = 10.sp
+        )
+    }
 }

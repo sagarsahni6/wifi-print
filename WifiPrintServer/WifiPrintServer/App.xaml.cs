@@ -13,7 +13,8 @@ public partial class App : Application
         {
             try
             {
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop");
+                var dir = AppSettings.AppDataDir;
+                Directory.CreateDirectory(dir);
                 File.WriteAllText(Path.Combine(dir, "crash_domain.log"), args.ExceptionObject?.ToString() ?? "Unknown domain error");
             }
             catch { }
@@ -23,7 +24,8 @@ public partial class App : Application
         {
             try
             {
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop");
+                var dir = AppSettings.AppDataDir;
+                Directory.CreateDirectory(dir);
                 File.WriteAllText(Path.Combine(dir, "crash_dispatcher.log"), args.Exception?.ToString() ?? "Unknown dispatcher error");
             }
             catch { }
@@ -57,7 +59,7 @@ public partial class App : Application
                     Dispatcher.Invoke(() =>
                     {
                         MessageBox.Show($"Failed to start server: {ex.Message}",
-                            "SpoolDrop Server", MessageBoxButton.OK, MessageBoxImage.Error);
+                            "Printora Server", MessageBoxButton.OK, MessageBoxImage.Error);
                     });
                 }
             });
@@ -68,7 +70,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             Console.Error.WriteLine($"FATAL: {ex}");
-            MessageBox.Show($"Startup failed:\n{ex}", "SpoolDrop Server — Fatal Error",
+            MessageBox.Show($"Startup failed:\n{ex}", "Printora Server — Fatal Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
@@ -90,7 +92,7 @@ public partial class App : Application
     {
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
-            Text = "SpoolDrop Server",
+            Text = "Printora Cloud Print Server",
             Visible = true
         };
         _staticTrayIcon = _trayIcon;
@@ -132,7 +134,8 @@ public partial class App : Application
     {
         try
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop");
+            var dir = AppSettings.AppDataDir;
+            Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "exit.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] OnExit called with exit code: {e.ApplicationExitCode}\n");
         }
         catch { }

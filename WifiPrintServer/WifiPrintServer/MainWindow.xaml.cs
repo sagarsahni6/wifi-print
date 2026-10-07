@@ -9,6 +9,7 @@ namespace WifiPrintServer;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer _refreshTimer;
+    private bool _isWebQrMode = true;
     private readonly DispatcherTimer _eventWiringTimer;
     private readonly DispatcherTimer _cleanupTimer;
     private readonly DispatcherTimer _pinRefreshTimer;
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
         var ip = DiscoveryService.GetLocalIpAddress();
         IpText.Text = $"IP: {ip}";
         PortText.Text = $"Port: {Program.Settings.ServerPort}";
+        UpdateSidebarCloudStatus();
         UpdatePinDisplay();
 
         // Auto-refresh PIN every 5 minutes (QR stays fixed, PIN refreshes)
@@ -79,7 +81,7 @@ public partial class MainWindow : Window
         };
         _cleanupTimer.Start();
 
-        AppendLog($"[{DateTime.Now:HH:mm:ss}] SpoolDrop Server starting...");
+        AppendLog($"[{DateTime.Now:HH:mm:ss}] Printora Cloud Print Server starting...");
         AppendLog($"[{DateTime.Now:HH:mm:ss}] Listening on https://{ip}:{Program.Settings.ServerPort}");
     }
 
@@ -155,6 +157,9 @@ public partial class MainWindow : Window
     /// </summary>
     private void ShowApprovalNotification(PendingApproval approval)
     {
+        // Show interactive bottom-right desktop toast notification with 1-click Approve/Deny
+        if (Program.AuthServiceInstance != null) ApprovalToastWindow.ShowToast(approval, Program.AuthServiceInstance);
+
         _pendingApprovals.Enqueue(approval);
         if (_currentApproval == null)
         {
@@ -180,12 +185,12 @@ public partial class MainWindow : Window
                 ApprovalBanner.Visibility = Visibility.Visible;
                 ApprovalIdle.Visibility = Visibility.Collapsed;
 
-                // Bring window to front
-                Show();
-                WindowState = WindowState.Normal;
-                Activate();
-                Topmost = true;
-                Topmost = false;
+                // Do NOT force-open or steal focus with MainWindow; let ApprovalToastWindow handle it non-intrusively
+                // If MainWindow is already visible, update its state smoothly
+                if (IsVisible && WindowState != WindowState.Minimized)
+                {
+                    // Already visible on screen
+                }
 
                 // Play notification sound & show system tray notification
                 System.Media.SystemSounds.Asterisk.Play();
@@ -523,16 +528,68 @@ public partial class MainWindow : Window
     {
         try
         {
-            var url = $"http://localhost:{Program.Settings.ServerPort}/";
+            var ip = DiscoveryService.GetLocalIpAddress();
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : Program.TunnelServiceInstance?.PublicUrl;
+
+            var url = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = url,
                 UseShellExecute = true
             });
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 🌐 Opened Web Portal: {url}");
         }
         catch (Exception ex)
         {
             AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open web portal: {ex.Message}");
+        }
+    }
+
+    private void UpdateSidebarCloudStatus()
+    {
+        try
+        {
+            var ip = DiscoveryService.GetLocalIpAddress();
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : Program.TunnelServiceInstance?.PublicUrl;
+
+            if (!string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl))
+            {
+                if (Uri.TryCreate(Program.Settings.CustomPublicUrl.Trim(), UriKind.Absolute, out var uri))
+                {
+                    CloudStatusText.Text = $"Cloud: {uri.Host}";
+                }
+                else
+                {
+                    CloudStatusText.Text = "Cloud: Active";
+                }
+                CloudStatusText.ToolTip = Program.Settings.GetWebPrintUrl(Program.Settings.CustomPublicUrl, ip);
+                CloudStatusText.Visibility = Visibility.Visible;
+            }
+            else if (!string.IsNullOrWhiteSpace(tunnelUrl))
+            {
+                if (Uri.TryCreate(tunnelUrl, UriKind.Absolute, out var uri))
+                {
+                    CloudStatusText.Text = $"Cloud: {uri.Host}";
+                }
+                else
+                {
+                    CloudStatusText.Text = "Cloud: Active";
+                }
+                CloudStatusText.ToolTip = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
+                CloudStatusText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                CloudStatusText.Visibility = Visibility.Collapsed;
+            }
+        }
+        catch
+        {
+            CloudStatusText.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -707,33 +764,180 @@ public partial class MainWindow : Window
             var name = Program.Settings.ServerName;
             var cert = Program.ServerCertificate;
 
-            // For the ON-SCREEN QR: use the live ephemeral tunnel URL so remote users can connect.
-            // Priority: CustomPublicUrl (permanent) > live TunnelService URL (ephemeral) > null (local only)
+            if (ShopServerName != null)
+            {
+                ShopServerName.Text = name;
+            }
+
             string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
                 ? Program.Settings.CustomPublicUrl.Trim()
                 : Program.TunnelServiceInstance?.PublicUrl;
 
-            var qrImage = QrCodeService.GenerateConnectionQrCode(
-                ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
-            QrCodeImage.Source = qrImage;
-
-            if (!string.IsNullOrEmpty(tunnelUrl))
+            var webUrl = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
+            if (ShopServerName != null)
             {
-                var isEphemeral = string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl);
-                QrInfoText.Text = isEphemeral
-                    ? $"☁ {tunnelUrl} (live — changes on restart)"
-                    : $"☁ {tunnelUrl}";
+                ShopServerName.Text = Program.Settings.HostIdentifier;
+            }
+
+            if (_isWebQrMode)
+            {
+                // Web Studio mode: QR code encodes the direct HTTP/HTTPS web address
+                // Any smartphone camera scans this directly to open the website without an app!
+                var qrImage = QrCodeService.GenerateUrlQrCode(webUrl, 10);
+                QrCodeImage.Source = qrImage;
+                QrInfoText.Text = webUrl;
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 Web Studio QR ready: {webUrl}");
             }
             else
             {
-                QrInfoText.Text = $"{ip}:{port} (local network only)";
-            }
+                // Android App mode: QR encodes JSON pairing payload for SpoolDrop Android App
+                var qrImage = QrCodeService.GenerateConnectionQrCode(
+                    ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
+                QrCodeImage.Source = qrImage;
 
-            AppendLog($"[{DateTime.Now:HH:mm:ss}] 📷 QR code ready{(string.IsNullOrEmpty(tunnelUrl) ? " (local only)" : $" (tunnel: {tunnelUrl})")}");
+                if (!string.IsNullOrEmpty(tunnelUrl))
+                {
+                    QrInfoText.Text = $"☁ {tunnelUrl}";
+                }
+                else
+                {
+                    QrInfoText.Text = $"{ip}:{port} (local network only)";
+                }
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] 📱 Android App Pairing QR ready");
+            }
         }
         catch (Exception ex)
         {
             AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ QR code generation failed: {ex.Message}");
+        }
+    }
+
+    private void QrMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (QrHeaderTitle == null) return;
+
+        if (QrModeWeb?.IsChecked == true)
+        {
+            _isWebQrMode = true;
+            QrHeaderTitle.Text = "Scan to Print";
+            QrHeaderSubtitle.Text = "Open your phone camera, scan this QR code, and upload any document to print. No app needed!";
+            if (FindResource("IconQrScannerMini") is System.Windows.Media.Geometry geo)
+                QrHeaderIcon.Data = geo;
+            if (StepsRowPanel != null) StepsRowPanel.Visibility = Visibility.Visible;
+            if (FormatPillsPanel != null) FormatPillsPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _isWebQrMode = false;
+            QrHeaderTitle.Text = "Android App Pairing";
+            QrHeaderSubtitle.Text = "Scan with Printora Android App for zero-config pairing.";
+            if (FindResource("IconDevice") is System.Windows.Media.Geometry geo)
+                QrHeaderIcon.Data = geo;
+            if (StepsRowPanel != null) StepsRowPanel.Visibility = Visibility.Collapsed;
+            if (FormatPillsPanel != null) FormatPillsPanel.Visibility = Visibility.Collapsed;
+        }
+
+        GenerateConnectionQrCode();
+    }
+
+    private void PrintPoster_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ip = DiscoveryService.GetLocalIpAddress();
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : Program.TunnelServiceInstance?.PublicUrl;
+
+            var webUrl = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
+            var posterUrl = $"{webUrl}/print-qr";
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = posterUrl,
+                UseShellExecute = true
+            });
+
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 🖨 Opened printable QR poster in browser: {posterUrl}");
+            App.ShowTrayNotification("Printable QR Poster", "Opening A4 poster in browser for printing...", System.Windows.Forms.ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open poster: {ex.Message}");
+            MessageBox.Show($"Could not open poster: {ex.Message}", "Poster Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OpenWebStudio_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ip = DiscoveryService.GetLocalIpAddress();
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : Program.TunnelServiceInstance?.PublicUrl;
+
+            var webUrl = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = webUrl,
+                UseShellExecute = true
+            });
+
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] 🌐 Opened Web Print Studio: {webUrl}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to open Web Studio: {ex.Message}");
+        }
+    }
+
+    private void SaveQrImage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ip = DiscoveryService.GetLocalIpAddress();
+            string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                ? Program.Settings.CustomPublicUrl.Trim()
+                : Program.TunnelServiceInstance?.PublicUrl;
+
+            var webUrl = Program.Settings.GetWebPrintUrl(tunnelUrl, ip);
+
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "PNG Image (*.png)|*.png",
+                FileName = _isWebQrMode ? "Printora-Web-Print-QR.png" : "Printora-App-Pairing-QR.png",
+                Title = "Save QR Code Image"
+            };
+
+            if (sfd.ShowDialog() == true)
+            {
+                byte[] bytes;
+                if (_isWebQrMode)
+                {
+                    bytes = QrCodeService.GenerateUrlQrBytes(webUrl, 16);
+                }
+                else
+                {
+                    var cert = Program.ServerCertificate;
+                    var token = Program.Settings.CurrentQrPairingToken;
+                    var payload = QrCodeService.GetConnectionPayloadJson(ip, Program.Settings.ServerPort, Program.Settings.ServerName, cert, token, tunnelUrl);
+                    using var qrGen = new QRCoder.QRCodeGenerator();
+                    var data = qrGen.CreateQrCode(payload, QRCoder.QRCodeGenerator.ECCLevel.M);
+                    using var qr = new QRCoder.PngByteQRCode(data);
+                    bytes = qr.GetGraphic(16);
+                }
+
+                File.WriteAllBytes(sfd.FileName, bytes);
+                AppendLog($"[{DateTime.Now:HH:mm:ss}] 💾 Saved QR code image to: {sfd.FileName}");
+                App.ShowTrayNotification("QR Image Saved", $"Saved to {Path.GetFileName(sfd.FileName)}", System.Windows.Forms.ToolTipIcon.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[{DateTime.Now:HH:mm:ss}] ⚠ Failed to save QR image: {ex.Message}");
+            MessageBox.Show($"Could not save image: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -770,7 +974,7 @@ public partial class MainWindow : Window
             if (printDlg.ShowDialog() != true) return;
 
             var visual = CreatePrintableQrSign();
-            printDlg.PrintVisual(visual, "SpoolDrop Server - Connection QR Code Sign");
+            printDlg.PrintVisual(visual, "Printora Server - Connection QR Code Sign");
             AppendLog($"[{DateTime.Now:HH:mm:ss}] 🖨 QR Code sign sent to printer");
             App.ShowTrayNotification("🖨 Printing QR Sign", "Permanent QR code sign sent to printer.", System.Windows.Forms.ToolTipIcon.Info);
         }
@@ -789,10 +993,14 @@ public partial class MainWindow : Window
         var cert = Program.ServerCertificate;
         string? tunnelUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
             ? Program.Settings.CustomPublicUrl.Trim()
-            : null;
+            : Program.TunnelServiceInstance?.PublicUrl;
 
-        var qrBitmap = QrCodeService.GenerateConnectionQrCode(
-            ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
+        var webUrl = !string.IsNullOrWhiteSpace(tunnelUrl) ? tunnelUrl : $"https://{ip}:{port}";
+
+        // Use direct URL QR so standard phone cameras can scan it immediately
+        var qrBitmap = _isWebQrMode
+            ? QrCodeService.GenerateUrlQrCode(webUrl, 12)
+            : QrCodeService.GenerateConnectionQrCode(ip, port, name, cert, Program.Settings.CurrentQrPairingToken, tunnelUrl);
 
         var border = new Border
         {
@@ -814,7 +1022,7 @@ public partial class MainWindow : Window
         var headerPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
         var title = new TextBlock
         {
-            Text = "🖨 SpoolDrop Print Station",
+            Text = "🖨 Printora Print Station",
             FontSize = 32,
             FontWeight = FontWeights.Bold,
             Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#0F172A")!,
@@ -895,7 +1103,7 @@ public partial class MainWindow : Window
         };
         var step2 = new TextBlock
         {
-            Text = "2. Open the SpoolDrop app and tap 'Scan QR Code'",
+            Text = "2. Open the Printora app and tap 'Scan QR Code'",
             FontSize = 12.5,
             Foreground = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1E293B")!,
             Margin = new Thickness(0, 0, 0, 6)
@@ -1029,6 +1237,7 @@ public partial class MainWindow : Window
             TunnelStatusText.Text = "🌐 Tunnel: Not active";
             TunnelUrlText.Text = "";
         }
+        UpdateSidebarCloudStatus();
     }
 
     // ═══════════════════════════════════════════════════════════════

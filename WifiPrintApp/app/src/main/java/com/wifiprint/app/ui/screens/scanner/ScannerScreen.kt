@@ -24,6 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.foundation.BorderStroke
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +70,7 @@ fun ScannerScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+    val haptic = LocalHapticFeedback.current
 
     // Handle save PDF success (shows Toast with saved location, stays on screen)
     LaunchedEffect(state.savePdfSuccessMessage) {
@@ -207,7 +213,7 @@ fun ScannerScreen(
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 elevation = CardDefaults.cardElevation(2.dp)
             ) {
                 Column(
@@ -359,20 +365,32 @@ fun ScannerScreen(
         ) {
             FilterChip(
                 selected = state.scanMode == ScanMode.Document,
-                onClick = { viewModel.setScanMode(ScanMode.Document) },
-                label = { Text("📄 Document", fontWeight = FontWeight.Medium) },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.setScanMode(ScanMode.Document)
+                },
+                leadingIcon = { Icon(Icons.Filled.Description, null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Document", fontWeight = FontWeight.Medium) },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
                 selected = state.scanMode == ScanMode.IDCard,
-                onClick = { viewModel.setScanMode(ScanMode.IDCard) },
-                label = { Text("🪪 ID Card", fontWeight = FontWeight.Medium) },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.setScanMode(ScanMode.IDCard)
+                },
+                leadingIcon = { Icon(Icons.Filled.Badge, null, modifier = Modifier.size(16.dp)) },
+                label = { Text("ID Card", fontWeight = FontWeight.Medium) },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
                 selected = state.scanMode == ScanMode.Batch,
-                onClick = { viewModel.setScanMode(ScanMode.Batch) },
-                label = { Text("📚 Batch", fontWeight = FontWeight.Medium) },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.setScanMode(ScanMode.Batch)
+                },
+                leadingIcon = { Icon(Icons.Filled.Layers, null, modifier = Modifier.size(16.dp)) },
+                label = { Text("Batch", fontWeight = FontWeight.Medium) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -429,6 +447,39 @@ fun ScannerScreen(
                                     drawLine(Color.White.copy(alpha = 0.6f), Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 2.5f)
                                     drawLine(Color.White.copy(alpha = 0.6f), Offset(size.width, 0f), Offset(size.width, size.height), strokeWidth = 2.5f)
                                 }
+                        )
+
+                        // Animated Scanning Laser Beam
+                        val scanLaserTransition = rememberInfiniteTransition(label = "laser")
+                        val laserOffsetFraction by scanLaserTransition.animateFloat(
+                            initialValue = 0.05f,
+                            targetValue = 0.95f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(2200, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "laser_y"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.5.dp)
+                                .align(Alignment.TopStart)
+                                .graphicsLayer {
+                                    translationY = 160.dp.toPx() * laserOffsetFraction
+                                }
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            Color(0xFF22D3EE).copy(alpha = 0.8f),
+                                            Color.White,
+                                            Color(0xFF22D3EE).copy(alpha = 0.8f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
                         )
 
                         Row(
@@ -546,7 +597,7 @@ fun ScannerScreen(
                             Card(
                                 onClick = { viewModel.selectPage(index) },
                                 shape = RoundedCornerShape(12.dp),
-                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, Tertiary) else androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, Tertiary) else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 elevation = CardDefaults.cardElevation(if (isSelected) 3.dp else 1.dp),
                                 modifier = Modifier.width(90.dp).height(125.dp)
@@ -641,7 +692,7 @@ fun ScannerScreen(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(2.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
@@ -699,7 +750,7 @@ fun ScannerScreen(
                             onClick = { viewModel.enterCropMode() },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -728,7 +779,7 @@ fun ScannerScreen(
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -757,7 +808,7 @@ fun ScannerScreen(
                             onClick = { viewModel.runOcr(safeIndex) },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -785,7 +836,7 @@ fun ScannerScreen(
                             onClick = { viewModel.rotatePage(safeIndex, 90) },
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -810,7 +861,7 @@ fun ScannerScreen(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(1.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -904,7 +955,7 @@ fun ScannerScreen(
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DividerColor),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(

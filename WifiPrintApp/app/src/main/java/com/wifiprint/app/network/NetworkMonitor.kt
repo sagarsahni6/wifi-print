@@ -118,11 +118,27 @@ class NetworkMonitor(private val context: Context) {
 
     /**
      * Get the device's local IPv4 address on the current Wi-Fi network.
-     * Uses NetworkInterface for modern Android compatibility without requiring location permissions.
+     * Prefers active Wi-Fi IPv4 address first, then falls back to non-loopback interfaces.
      */
     fun getLocalIpAddress(): String? {
+        // 1. Prefer Wi-Fi IPv4 address when Wi-Fi is connected
+        @Suppress("DEPRECATION")
         try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val ipInt = wifiManager.connectionInfo?.ipAddress ?: 0
+            if (ipInt != 0) {
+                return String.format(
+                    "%d.%d.%d.%d",
+                    ipInt and 0xff,
+                    ipInt shr 8 and 0xff,
+                    ipInt shr 16 and 0xff,
+                    ipInt shr 24 and 0xff
+                )
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fall back to active non-loopback IPv4 network interfaces
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces() ?: return null
             while (interfaces.hasMoreElements()) {
                 val iface = interfaces.nextElement()
                 if (iface.isLoopback || !iface.isUp) continue
@@ -136,20 +152,7 @@ class NetworkMonitor(private val context: Context) {
             }
         } catch (_: Exception) {}
 
-        @Suppress("DEPRECATION")
-        return try {
-            val ipInt = wifiManager.connectionInfo?.ipAddress ?: return null
-            if (ipInt == 0) return null
-            String.format(
-                "%d.%d.%d.%d",
-                ipInt and 0xff,
-                ipInt shr 8 and 0xff,
-                ipInt shr 16 and 0xff,
-                ipInt shr 24 and 0xff
-            )
-        } catch (_: Exception) {
-            null
-        }
+        return null
     }
 
     /**
@@ -158,26 +161,19 @@ class NetworkMonitor(private val context: Context) {
     fun isSameLocalSubnet(serverIp: String): Boolean {
         if (serverIp == "localhost" || serverIp == "127.0.0.1") return true
 
-        val localIp = getLocalIpAddress()
-        if (localIp != null) {
-            val localParts = localIp.split('.')
-            val serverParts = serverIp.split('.')
-            if (localParts.size == 4 && serverParts.size == 4) {
-                if (localParts[0] == serverParts[0] &&
-                    localParts[1] == serverParts[1] &&
-                    localParts[2] == serverParts[2]) {
-                    return true
-                }
+        val localIp = getLocalIpAddress() ?: return false
+        val localParts = localIp.split('.')
+        val serverParts = serverIp.split('.')
+        if (localParts.size == 4 && serverParts.size == 4) {
+            // Match /24 subnet (first 3 octets, e.g. 192.168.1.x)
+            if (localParts[0] == serverParts[0] &&
+                localParts[1] == serverParts[1] &&
+                localParts[2] == serverParts[2]) {
+                return true
             }
-        }
-
-        // If device has active Wi-Fi and server is a private RFC1918 address, it is on the local network
-        if (checkWifiConnected() && (
-            serverIp.startsWith("192.168.") ||
-            serverIp.startsWith("10.") ||
-            serverIp.startsWith("172.")
-        )) {
-            return true
+            // For 10.x.x.x or 172.16.x.x networks, check matching prefix
+            if (localParts[0] == "10" && serverParts[0] == "10") return true
+            if (localParts[0] == "172" && serverParts[0] == "172" && localParts[1] == serverParts[1]) return true
         }
 
         return false

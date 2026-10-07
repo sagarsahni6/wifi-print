@@ -19,8 +19,7 @@ public class TunnelService : IDisposable
     private readonly object _lock = new();
 
     private static readonly string CloudflaredDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WifiPrintServer", "cloudflared");
+        AppSettings.AppDataDir, "cloudflared");
 
     private static readonly string CloudflaredExePath = Path.Combine(CloudflaredDir, "cloudflared.exe");
 
@@ -68,19 +67,49 @@ public class TunnelService : IDisposable
 
         try
         {
-            OnLog?.Invoke("⏳ Starting Cloud Relay tunnel (Cloudflare)...");
+            OnLog?.Invoke("⏳ Starting Printora Cloud Relay (Cloudflare)...");
 
             // 1. Ensure cloudflared.exe exists
             if (!File.Exists(CloudflaredExePath))
             {
+                var legacyExes = new[]
+                {
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpoolDrop", "cloudflared", "cloudflared.exe"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WifiPrintServer", "cloudflared", "cloudflared.exe")
+                };
+                foreach (var legacy in legacyExes)
+                {
+                    if (File.Exists(legacy))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(CloudflaredDir);
+                            File.Copy(legacy, CloudflaredExePath, true);
+                            break;
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            if (!File.Exists(CloudflaredExePath))
+            {
                 _logger.LogInformation("Downloading cloudflared.exe...");
-                OnLog?.Invoke("⬇ Downloading cloudflared binary (one-time setup)...");
+                OnLog?.Invoke("⬇ Downloading cloudflared binary for Printora Cloud Relay...");
                 await DownloadCloudflaredAsync();
-                OnLog?.Invoke("✓ cloudflared binary downloaded successfully.");
+                OnLog?.Invoke("✓ Printora Cloud Relay binary downloaded successfully.");
             }
 
             // 2. Start the tunnel process
-            _logger.LogInformation("Starting Cloudflare tunnel for port {Port}...", localPort);
+            var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cloudflared", "config.yml");
+            bool hasNamedTunnel = File.Exists(configPath);
+            string customUrl = Program.Settings.CustomPublicUrl?.Trim() ?? "";
+
+            string arguments = hasNamedTunnel
+                ? "tunnel run"
+                : $"tunnel --url https://localhost:{localPort} --no-tls-verify";
+
+            _logger.LogInformation("Starting Cloudflare tunnel for port {Port} (named={Named}, args={Args})...", localPort, hasNamedTunnel, arguments);
             OnLog?.Invoke($"🔄 Connecting tunnel for port {localPort} to Cloudflare edge...");
 
             _tunnelProcess = new Process
@@ -88,7 +117,7 @@ public class TunnelService : IDisposable
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = CloudflaredExePath,
-                    Arguments = $"tunnel --url https://localhost:{localPort} --no-tls-verify",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -216,6 +245,19 @@ public class TunnelService : IDisposable
                     IsStarting = false;
                     _logger.LogInformation("🌐 Cloudflare tunnel active: {Url}", PublicUrl);
                     OnTunnelReady?.Invoke(PublicUrl);
+                }
+                else if (string.IsNullOrEmpty(PublicUrl) && line.Contains("Registered tunnel connection"))
+                {
+                    var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cloudflared", "config.yml");
+                    if (File.Exists(configPath))
+                    {
+                        PublicUrl = !string.IsNullOrWhiteSpace(Program.Settings.CustomPublicUrl)
+                            ? Program.Settings.CustomPublicUrl.Trim()
+                            : "https://printora.calclabz.com";
+                        IsStarting = false;
+                        _logger.LogInformation("🌐 Cloudflare permanent named tunnel active: {Url}", PublicUrl);
+                        OnTunnelReady?.Invoke(PublicUrl);
+                    }
                 }
             }
         }

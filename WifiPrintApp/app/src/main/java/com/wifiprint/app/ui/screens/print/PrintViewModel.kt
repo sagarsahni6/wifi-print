@@ -413,7 +413,23 @@ class PrintViewModel @Inject constructor(
                 printerName = printer.name
             )
             workManager.enqueue(request)
-            _state.update { it.copy(isUploading = false, success = true, error = null) }
+            _state.update {
+                it.copy(
+                    isUploading = false,
+                    success = true,
+                    error = null,
+                    // Clear file selection so preview is removed after printing
+                    selectedFileUri = null,
+                    selectedFileName = "",
+                    fileType = "Unknown",
+                    totalPages = null,
+                    pageRangeMode = "All",
+                    isPdfLocked = false,
+                    pdfPassword = null,
+                    isPasswordVerified = false,
+                    settings = it.settings.copy(pdfPassword = null)
+                )
+            }
         } catch (e: Exception) {
             _state.update { it.copy(isUploading = false, error = e.message ?: "Failed to schedule upload") }
         }
@@ -446,7 +462,17 @@ class PrintViewModel @Inject constructor(
                 }
 
                 _state.update {
-                    it.copy(isUploading = false, success = true, error = null)
+                    it.copy(
+                        isUploading = false,
+                        success = true,
+                        error = null,
+                        // Clear batch selection so preview is removed after printing
+                        selectedFiles = emptyList(),
+                        isBatchMode = false,
+                        selectedFileUri = null,
+                        selectedFileName = "",
+                        fileType = "Unknown"
+                    )
                 }
             } catch (e: Exception) {
                 _state.update {
@@ -455,4 +481,11 @@ class PrintViewModel @Inject constructor(
             }
         }
     }
+
+    /** Reset the success flag after navigation to prevent re-triggering. */
+    fun resetSuccess() {
+        _state.update { it.copy(success = false) }
+    }
+
+
 }

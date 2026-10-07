@@ -23,7 +23,15 @@ import com.wifiprint.app.data.models.ServerPrintJob
 import com.wifiprint.app.network.CertificatePinning
 import com.wifiprint.app.network.NetworkMonitor
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Socket
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -41,6 +49,14 @@ import javax.inject.Singleton
  * Central repository coordinating between API, local database, and UI layer.
  * Handles dynamic base URL switching, per-server certificate trust, and local state sync.
  */
+data class ServerConnectionStatus(
+    val isConnected: Boolean = false,
+    val serverName: String = "Not connected",
+    val serverUrl: String = "",
+    val isTunnel: Boolean = false,
+    val health: String = "Unknown"
+)
+
 @Singleton
 class PrintRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -55,6 +71,9 @@ class PrintRepository @Inject constructor(
     private var currentServer: ServerInfo? = null
     private var currentApiService: PrintApiService? = null
     private var observedServerFingerprint: String? = null
+
+    private val _connectionStatus = MutableStateFlow(ServerConnectionStatus())
+    val connectionStatus: StateFlow<ServerConnectionStatus> = _connectionStatus.asStateFlow()
 
     /**
      * Determines whether the given URL is a Cloudflare Quick Tunnel or remote domain.
@@ -73,19 +92,16 @@ class PrintRepository @Inject constructor(
         val normalizedTunnel = server.tunnelUrl?.trim()?.let {
             if (it.endsWith("/")) it else "$it/"
         }
-        val isWifi = NetworkMonitor(context).checkWifiConnected()
         val hasLocalIp = !server.ipAddress.isNullOrBlank()
         val isSameSubnet = hasLocalIp && NetworkMonitor(context).isSameLocalSubnet(server.ipAddress)
 
-        // Always prioritize local Wi-Fi IP when on Wi-Fi or on same subnet for instant connection
-        currentBaseUrl = if ((isWifi || isSameSubnet) && hasLocalIp) {
-            "https://${server.ipAddress}:${server.port}/"
-        } else if (isTunnel) {
-            normalizedTunnel!!
-        } else if (hasLocalIp) {
-            "https://${server.ipAddress}:${server.port}/"
-        } else {
-            "https://localhost:${server.port}/"
+        // Prioritize local IP ONLY if actually on the same local subnet.
+        // If not on same subnet and tunnel is available, use tunnel!
+        currentBaseUrl = when {
+            isSameSubnet && hasLocalIp -> "https://${server.ipAddress}:${server.port}/"
+            isTunnel -> normalizedTunnel!!
+            hasLocalIp -> "https://${server.ipAddress}:${server.port}/"
+            else -> "https://localhost:${server.port}/"
         }
 
         currentToken = server.token
@@ -98,6 +114,16 @@ class PrintRepository @Inject constructor(
             allowTrustOnFirstUse = useTunnelTls || server.certificateFingerprint.isNullOrBlank()
         ) { fingerprint ->
             observedServerFingerprint = fingerprint
+        }
+
+        _connectionStatus.update {
+            it.copy(
+                isConnected = true,
+                serverName = server.name,
+                serverUrl = currentBaseUrl,
+                isTunnel = useTunnelTls,
+                health = "Healthy"
+            )
         }
     }
 
@@ -130,20 +156,36 @@ class PrintRepository @Inject constructor(
         pin: String? = null,
         tunnelUrl: String? = null
     ): Result<AuthResponse> {
-        val isSameNet = serverIp.isNotBlank() && NetworkMonitor(context).isSameLocalSubnet(serverIp)
         val hasTunnel = !tunnelUrl.isNullOrBlank()
         val normalizedTunnel = tunnelUrl?.trim()?.let { if (it.endsWith("/")) it else "$it/" }
+        val isSameNet = serverIp.isNotBlank() && NetworkMonitor(context).isSameLocalSubnet(serverIp)
+
+        // Fast LAN probe: if local IP is provided, test if the port is reachable with 1.0s timeout
+        val isLocalReachable = if (serverIp.isNotBlank() && port > 0) {
+            withContext(Dispatchers.IO) {
+                try {
+                    Socket().use { socket ->
+                        socket.connect(InetSocketAddress(serverIp, port), 1000)
+                        true
+                    }
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        } else false
 
         // Build list of target URLs to try:
-        // If not on same subnet and tunnel is available, prioritize the tunnel URL.
-        // Otherwise try local IP first, and fallback to tunnel if unreachable.
+        // 1. If local IP port is confirmed open right now (takes ~20ms on LAN), try local IP first!
+        // 2. If local IP is unreachable, or if tunnel is available and not reachable locally, try tunnel FIRST!
         val urlsToTry = mutableListOf<String>()
-        if (hasTunnel && !isSameNet) {
+        if (isLocalReachable) {
+            urlsToTry.add("https://$serverIp:$port/")
+            if (hasTunnel) urlsToTry.add(normalizedTunnel!!)
+        } else if (hasTunnel) {
             urlsToTry.add(normalizedTunnel!!)
             if (serverIp.isNotBlank()) urlsToTry.add("https://$serverIp:$port/")
         } else {
             if (serverIp.isNotBlank()) urlsToTry.add("https://$serverIp:$port/")
-            if (hasTunnel) urlsToTry.add(normalizedTunnel!!)
         }
 
         var lastException: Exception? = null
@@ -153,12 +195,16 @@ class PrintRepository @Inject constructor(
             val isTunnelTarget = isTunnelUrl(targetBaseUrl)
 
             try {
+                // If local IP is attempted while a tunnel is also available as fallback,
+                // use a short 3-second connect timeout so we don't block the user.
+                val connectTimeout = if (!isTunnelTarget && hasTunnel) 3L else 15L
                 val tempApi = createApiService(
                     baseUrl = targetBaseUrl,
                     token = null,
                     pinnedFingerprint = null,
                     allowTrustOnFirstUse = true,
                     readTimeoutSeconds = 90,
+                    connectTimeoutSeconds = connectTimeout,
                     onCertificateSeen = { fingerprint -> capturedFingerprint = fingerprint }
                 )
 
@@ -447,24 +493,38 @@ class PrintRepository @Inject constructor(
 
     /**
      * Verify the connection is actually working by calling the server's status endpoint.
-     * A successful verification also locks in the observed certificate fingerprint for older saved servers.
+     * Uses runApiCall to automatically fall back between local IP and tunnel URL if one fails!
      */
     suspend fun verifyConnection(): Boolean {
-        return try {
-            val api = ensureConnected()
+        val result = runApiCall("Verification failed") { api ->
             val response = api.getServerStatus()
             if (response.isSuccessful) {
-                persistObservedFingerprint()
-                updateCurrentServerHealth(response.body()?.readiness ?: "Healthy")
-                true
+                Result.success(response.body()?.readiness ?: "Healthy")
             } else {
-                updateCurrentServerHealth("Unhealthy")
-                false
+                Result.failure(Exception("Server returned status ${response.code()}"))
             }
-        } catch (_: Exception) {
-            updateCurrentServerHealth("Unreachable")
-            false
         }
+        val success = result.isSuccess
+        val server = currentServer ?: serverDao.getLastPairedServer()
+        if (success) {
+            _connectionStatus.update {
+                it.copy(
+                    isConnected = true,
+                    serverName = server?.name ?: "Connected",
+                    serverUrl = currentBaseUrl,
+                    isTunnel = isTunnelUrl(currentBaseUrl),
+                    health = "Healthy"
+                )
+            }
+        } else {
+            _connectionStatus.update {
+                it.copy(
+                    isConnected = false,
+                    health = "Unreachable"
+                )
+            }
+        }
+        return success
     }
 
     private suspend fun <T> runApiCall(
@@ -478,6 +538,16 @@ class PrintRepository @Inject constructor(
             if (result.isSuccess) {
                 persistObservedFingerprint()
                 updateCurrentServerHealth("Healthy")
+                val s = currentServer ?: server
+                _connectionStatus.update {
+                    it.copy(
+                        isConnected = true,
+                        serverName = s?.name ?: "Connected",
+                        serverUrl = currentBaseUrl,
+                        isTunnel = isTunnelUrl(currentBaseUrl),
+                        health = "Healthy"
+                    )
+                }
                 result
             } else {
                 updateCurrentServerHealth(failureHealth)
@@ -515,6 +585,16 @@ class PrintRepository @Inject constructor(
                         if (retryResult.isSuccess) {
                             persistObservedFingerprint()
                             updateCurrentServerHealth("Healthy")
+                            val s = currentServer ?: server
+                            _connectionStatus.update {
+                                it.copy(
+                                    isConnected = true,
+                                    serverName = s?.name ?: "Connected",
+                                    serverUrl = currentBaseUrl,
+                                    isTunnel = isTunnelUrl(currentBaseUrl),
+                                    health = "Healthy"
+                                )
+                            }
                             return retryResult
                         }
                     } catch (_: Exception) {
@@ -534,12 +614,13 @@ class PrintRepository @Inject constructor(
         pinnedFingerprint: String?,
         allowTrustOnFirstUse: Boolean,
         readTimeoutSeconds: Long = 60,
+        connectTimeoutSeconds: Long = 15,
         onCertificateSeen: ((String) -> Unit)? = null
     ): PrintApiService {
         val clientBuilder = okHttpClient.newBuilder()
             .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
                 token?.let { builder.addHeader("Authorization", "Bearer $it") }

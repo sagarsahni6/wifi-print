@@ -59,14 +59,12 @@ public class FileProcessingService
     public async Task<(string? ConvertedPath, string? Error)> ConvertIfNeededAsync(string filePath)
     {
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
-        if (ext == ".pdf" || ImageExtensions.Contains(ext))
+        if (ext == ".pdf" || ImageExtensions.Contains(ext) || ext is ".txt" or ".text")
             return (filePath, null);
 
         if (ext == ".docx" || ext == ".doc")
             return await ConvertDocxToPdfAsync(filePath);
 
-        if (ext == ".txt" || ext == ".text")
-            return await ConvertTextToPdfAsync(filePath);
 
         return (null, $"No converter for {ext}");
     }
@@ -98,24 +96,6 @@ public class FileProcessingService
 
             string pdfPath = Path.ChangeExtension(filePath, ".pdf");
             return File.Exists(pdfPath) ? (pdfPath, null) : (null, "Conversion produced no output");
-        }
-        catch (Exception ex) { return (null, ex.Message); }
-    }
-
-    private async Task<(string?, string?)> ConvertTextToPdfAsync(string filePath)
-    {
-        try
-        {
-            string pdfPath = Path.ChangeExtension(filePath, ".pdf");
-            string text = await File.ReadAllTextAsync(filePath);
-            using var writer = new iText.Kernel.Pdf.PdfWriter(pdfPath);
-            using var pdf = new iText.Kernel.Pdf.PdfDocument(writer);
-            var doc = new iText.Layout.Document(pdf);
-            var font = iText.Kernel.Font.PdfFontFactory.CreateFont(
-                iText.IO.Font.Constants.StandardFonts.COURIER);
-            doc.Add(new iText.Layout.Element.Paragraph(text).SetFont(font).SetFontSize(10));
-            doc.Close();
-            return (pdfPath, null);
         }
         catch (Exception ex) { return (null, ex.Message); }
     }
