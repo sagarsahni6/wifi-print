@@ -284,8 +284,11 @@ public class PrinterService
             string msg = ex.Message;
             bool isPasswordIssue = msg.Contains("password", StringComparison.OrdinalIgnoreCase) ||
                                   ex.GetType().Name.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+                                  msg.Contains("code 2", StringComparison.OrdinalIgnoreCase) ||
                                   msg.Contains("code 3", StringComparison.OrdinalIgnoreCase) ||
-                                  msg.Contains("code 4", StringComparison.OrdinalIgnoreCase);
+                                  msg.Contains("code 4", StringComparison.OrdinalIgnoreCase) ||
+                                  msg.Contains("code 5", StringComparison.OrdinalIgnoreCase) ||
+                                  msg.Contains("security", StringComparison.OrdinalIgnoreCase);
 
             if (isPasswordIssue)
             {

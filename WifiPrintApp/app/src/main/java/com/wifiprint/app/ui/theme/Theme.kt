@@ -1,4 +1,4 @@
-﻿package com.wifiprint.app.ui.theme
+package com.wifiprint.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,7 +22,7 @@ private val LightColorScheme = lightColorScheme(
     secondary = Secondary,
     onSecondary = Color.White,
     secondaryContainer = SecondaryLight,
-    onSecondaryContainer = Secondary,
+    onSecondaryContainer = PrimaryDark,
     tertiary = Tertiary,
     onTertiary = Color.White,
     tertiaryContainer = TertiaryLight,
@@ -40,24 +40,24 @@ private val LightColorScheme = lightColorScheme(
     outline = DividerColor,
     outlineVariant = DividerColor,
     inversePrimary = PrimaryLuminous,
-    inverseSurface = Color(0xFF1E293B),
-    inverseOnSurface = Color(0xFFF8FAFC),
+    inverseSurface = SurfaceDark,
+    inverseOnSurface = TextPrimaryDark,
     surfaceTint = Primary
 )
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryLuminous,
-    onPrimary = Color(0xFF0F172A),
-    primaryContainer = Color(0xFF312E81),
-    onPrimaryContainer = Color(0xFFE0E7FF),
+    onPrimary = Color(0xFF08120D),
+    primaryContainer = Color(0xFF0A7746),
+    onPrimaryContainer = Color(0xFFE8F5EE),
     secondary = SecondaryLuminous,
-    onSecondary = Color(0xFF0F172A),
-    secondaryContainer = Color(0xFF4C1D95),
-    onSecondaryContainer = Color(0xFFEDE9FE),
+    onSecondary = Color(0xFF08120D),
+    secondaryContainer = Color(0xFF064E3B),
+    onSecondaryContainer = Color(0xFFD1FAE5),
     tertiary = TertiaryLuminous,
-    onTertiary = Color(0xFF0F172A),
-    tertiaryContainer = Color(0xFF134E4A),
-    onTertiaryContainer = Color(0xFFCCFBF1),
+    onTertiary = Color(0xFF08120D),
+    tertiaryContainer = Color(0xFF13241A),
+    onTertiaryContainer = Color(0xFFA7F3D0),
     background = BgDark,
     surface = SurfaceDark,
     surfaceVariant = SurfaceDarkElevated,
@@ -71,8 +71,8 @@ private val DarkColorScheme = darkColorScheme(
     outline = DividerDark,
     outlineVariant = DividerDark,
     inversePrimary = Primary,
-    inverseSurface = Color(0xFFE2E8F0),
-    inverseOnSurface = Color(0xFF0F172A),
+    inverseSurface = BgLight,
+    inverseOnSurface = TextPrimary,
     surfaceTint = PrimaryLuminous
 )
 

@@ -235,8 +235,8 @@ fun SettingsScreen(
                         )
                     }
                     Spacer(Modifier.height(14.dp))
-                    AboutInfoRow("App Name", "Printora: Cloud Print & Scan")
-                    AboutInfoRow("Version", "2.2.0 (Pro Max Edition)")
+                    AboutInfoRow("App Name", "Printora")
+                    AboutInfoRow("Version", "2.2.2 (Pro Max Edition)")
                     AboutInfoRow("Security", "AES-256 E2EE & TLS")
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -290,7 +290,7 @@ fun SettingsScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             val intent = Intent(
                                 Intent.ACTION_VIEW,
-                                Uri.parse("https://wifiprint.app/#download")
+                                Uri.parse("https://printora.app/#download")
                             )
                             context.startActivity(intent)
                         },

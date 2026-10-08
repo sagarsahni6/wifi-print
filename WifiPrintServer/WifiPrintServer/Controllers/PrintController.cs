@@ -191,6 +191,7 @@ public class PrintController : ControllerBase
     /// POST /api/print/pagecount — Get the page count of a PDF file without printing.
     /// Supports password-protected / locked PDF documents.
     /// </summary>
+    [AllowAnonymous]
     [HttpPost("pagecount")]
     [RequestSizeLimit(104_857_600)]
     public async Task<IActionResult> GetPageCount(IFormFile file, [FromForm] string? password = null)

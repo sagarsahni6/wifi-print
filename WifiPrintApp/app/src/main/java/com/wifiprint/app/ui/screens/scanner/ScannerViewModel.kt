@@ -829,7 +829,7 @@ class ScannerViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isSavingPdf = false,
-                        savePdfSuccessMessage = "PDF saved to Documents/WifiPrint/Scans/$fileName"
+                        savePdfSuccessMessage = "PDF saved to Documents/Printora/Scans/$fileName"
                     )
                 }
             } catch (e: Exception) {
@@ -1333,7 +1333,7 @@ class ScannerViewModel @Inject constructor(
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/WifiPrint/Scans")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/Printora/Scans")
         }
         val uri = context.contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
             ?: throw Exception("Failed to create file")

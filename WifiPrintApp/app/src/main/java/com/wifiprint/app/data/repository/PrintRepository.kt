@@ -363,8 +363,64 @@ class PrintRepository @Inject constructor(
         }
     }
 
-    /** Get page count of a file without reading it fully into memory, supporting password-protected PDFs. */
+    /** Get page count of a file, supporting password-protected PDFs with both local fast-path and server fallback. */
     suspend fun getPageCount(fileUri: Uri, fileName: String, password: String? = null): Result<PageCountResponse> {
+        val isPdf = fileName.endsWith(".pdf", ignoreCase = true) ||
+                (context.contentResolver.getType(fileUri) == "application/pdf")
+
+        if (isPdf) {
+            val localResult = withContext(Dispatchers.Default) {
+                com.wifiprint.app.data.pdf.PdfSecurityHelper.inspectPdf(context, fileUri, password)
+            }
+
+            if (localResult.isPdf) {
+                if (!localResult.isEncrypted) {
+                    return Result.success(
+                        PageCountResponse(
+                            pageCount = localResult.pageCount,
+                            fileType = "PDF",
+                            isLocked = false,
+                            requiresPassword = false,
+                            isPasswordVerified = true
+                        )
+                    )
+                }
+
+                // Encrypted PDF
+                if (localResult.isPasswordValid == false) {
+                    // Password was supplied and verified locally to be incorrect!
+                    return Result.failure(Exception("Incorrect password. Please verify the password and try again."))
+                }
+
+                if (localResult.isPasswordValid == true) {
+                    // Password was verified successfully!
+                    return Result.success(
+                        PageCountResponse(
+                            pageCount = localResult.pageCount,
+                            fileType = "PDF",
+                            isLocked = true,
+                            requiresPassword = false,
+                            isPasswordVerified = true
+                        )
+                    )
+                }
+
+                // If no password provided yet (initial inspection):
+                if (password.isNullOrEmpty()) {
+                    return Result.success(
+                        PageCountResponse(
+                            pageCount = localResult.pageCount,
+                            fileType = "PDF",
+                            isLocked = true,
+                            requiresPassword = true,
+                            isPasswordVerified = false
+                        )
+                    )
+                }
+            }
+        }
+
+        // If local inspection was inconclusive, attempt server validation
         return runApiCall("Failed to get page count") { api ->
             val contentLength = getContentLength(fileUri)
             val mimeType = context.contentResolver.getType(fileUri) ?: "application/octet-stream"
@@ -387,7 +443,14 @@ class PrintRepository @Inject constructor(
             if (response.isSuccessful && response.body()?.data != null) {
                 Result.success(response.body()!!.data!!)
             } else {
-                val errorMsg = response.body()?.error ?: "Failed to get page count"
+                val errorMsg = extractApiMessage(response.body())
+                    ?: response.errorBody()?.string()?.let { errJson ->
+                        try {
+                            val obj = JSONObject(errJson)
+                            obj.optString("error").ifBlank { obj.optString("message").ifBlank { null } }
+                        } catch (_: Exception) { null }
+                    }
+                    ?: "Failed to get page count"
                 Result.failure(Exception(errorMsg))
             }
         }

@@ -232,7 +232,7 @@ class PrintViewModel @Inject constructor(
                     isPdfLocked = true,
                     isLoadingPageCount = false,
                     showPasswordDialog = true,
-                    totalPages = null
+                    totalPages = localCount
                 )
             }
             return
@@ -265,20 +265,11 @@ class PrintViewModel @Inject constructor(
     }
 
     private fun checkPdfStatus(uri: Uri): Pair<Int?, Boolean> {
-        return try {
-            appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
-                    Pair(renderer.pageCount, false)
-                }
-            } ?: Pair(null, false)
-        } catch (_: SecurityException) {
-            // Android PdfRenderer throws SecurityException when document is encrypted with password
-            Pair(null, true)
-        } catch (e: Exception) {
-            val isEncrypted = e.message?.contains("password", ignoreCase = true) == true ||
-                              e.message?.contains("encrypt", ignoreCase = true) == true
-            Pair(null, isEncrypted)
+        val inspection = com.wifiprint.app.data.pdf.PdfSecurityHelper.inspectPdf(appContext, uri)
+        if (inspection.isPdf) {
+            return Pair(inspection.pageCount, inspection.isEncrypted)
         }
+        return Pair(null, false)
     }
 
     fun setShowPasswordDialog(show: Boolean) {
