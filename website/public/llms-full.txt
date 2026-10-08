@@ -1,0 +1,45 @@
+# Printora — Full Technical Documentation & Architecture Manual
+
+## Overview
+Printora is an open-source wireless mobile printing and document scanning utility that connects modern mobile devices (Android, iPhone, iPad) to any printer managed by a host Windows PC (Windows 10, Windows 11).
+
+## Architecture & Communication Protocols
+1. **Host Server (.NET 8)**:
+   - Runs as a Windows background service or system tray utility.
+   - Interfaces directly with the Windows Print Spooler API (`winspool.drv`).
+   - Listens on a local HTTP/TLS server port (default 8080/8443).
+   - Broadcasts network presence via mDNS (`_printora._tcp.local`) and UDP beacon broadcast on the local subnet.
+2. **Android App (Native Kotlin & Jetpack Compose)**:
+   - Performs network service discovery (NSD) for mDNS services on Wi-Fi.
+   - Establishes TLS socket connection to the host PC.
+   - Transmits print jobs directly to the Windows server with progress telemetry.
+   - Includes on-device camera scanner with document edge detection and perspective warp correction.
+   - Supports ID card scanning mode: captures front and back sides and renders both onto a single printable A4 sheet.
+   - Performs on-device OCR using Google ML Kit for text extraction.
+3. **QR Web Print Studio (iOS & Web Clients)**:
+   - Generates a dynamic QR code on the Windows desktop app.
+   - Scanning the QR code with iPhone Camera opens the Web Print Studio in mobile Safari over local Wi-Fi or Cloudflare Tunnel.
+   - Browser client uploads PDF or images directly into the local print queue without installing any iOS app.
+   - Ephemeral session tokens authenticate each upload.
+4. **Remote Access via Cloudflare Tunnel**:
+   - Optional outbound-only reverse tunnel connecting the Windows server to Cloudflare Edge.
+   - Bypasses NAT and ISP carrier firewalls without opening incoming ports on the local router.
+   - Secured with optional 6-digit PIN authentication or access tokens.
+
+## File Format Support & Conversion Engine
+- **Direct Spooling**: PDF, JPG, JPEG, PNG, BMP, GIF, TXT.
+- **Office Documents (DOC, DOCX)**: Converted server-side using headless LibreOffice installed on the Windows PC.
+
+## Security & Privacy Guardrails
+- Local-first architecture: In standard Wi-Fi mode, data never leaves the local LAN.
+- Zero Cloud Retention: Print jobs received by the Windows server are spooled to temporary disk storage and purged immediately upon spooler handoff.
+- TLS communication with SHA-256 certificate pinning on the Android app.
+- Rate limits on Web Print Studio: Max 3 copies, max 30 PDF pages, 2 jobs/minute per IP.
+
+## Official Links
+- Website: https://printora.app
+- Windows Download: https://printora.app/download/windows
+- Android Download: https://printora.app/download/android
+- Security Model: https://printora.app/security
+- Compatibility Matrix: https://printora.app/compatibility
+- Source Code: https://github.com/sagarsahni6/wifi-print

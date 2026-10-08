@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 25mm 18mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9pt;
+      color: #6b7280;
+      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
+    }
+    @bottom-left {
+      content: "Confidential";
+      font-size: 7pt;
+      color: #d6d3cc;
+      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
+    }
+    @bottom-right {
+      content: "printora.app Google SEO Report";
+      font-size: 8pt;
+      color: #cbd5e1;
+      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
+    }
+  }
+
+  @page :first {
+    margin: 0;
+    @bottom-left { content: none; }
+    @bottom-center { content: none; }
+    @bottom-right { content: none; }
+  }
+
+  @page toc {
+    @bottom-center {
+      content: counter(page);
+      font-size: 9pt;
+      color: #6b7280;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Times New Roman', 'DejaVu Serif', Georgia, serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1e293b;
+    background: white;
+  }
+
+  /* ─── Title Page (Clean White) ─── */
+  .title-page {
+    page: first;
+    width: 210mm;
+    height: 297mm;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: #1a1a2e;
+    position: relative;
+    padding: 50mm 30mm 40mm 30mm;
+    border-top: 6mm solid #1e3a5f;
+  }
+
+  .title-page .badge {
+    background: #f7f6f3;
+    border: 1px solid #d6d3cc;
+    border-radius: 20px;
+    padding: 6px 18px;
+    font-size: 9pt;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 15mm;
+    color: #1e3a5f;
+  }
+
+  .title-page h1 {
+    font-size: 28pt;
+    font-weight: bold;
+    margin-bottom: 5mm;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+    color: #1a1a2e;
+  }
+
+  .title-page .subtitle {
+    font-size: 13pt;
+    color: #6b7280;
+    margin-bottom: 12mm;
+    font-weight: 300;
+  }
+
+  .title-page .url {
+    font-size: 12pt;
+    color: #1e3a5f;
+    margin-bottom: 15mm;
+    padding: 4mm 8mm;
+    border: 1px solid #d6d3cc;
+    border-radius: 6px;
+    background: #faf9f7;
+  }
+
+  .title-page .score-box {
+    background: #faf9f7;
+    border: 2px solid #d6d3cc;
+    border-radius: 12px;
+    padding: 6mm 12mm;
+    margin-bottom: 15mm;
+  }
+
+  .title-page .score-number {
+    font-size: 42pt;
+    font-weight: bold;
+    color: #1e3a5f;
+    line-height: 1;
+  }
+
+  .title-page .score-label {
+    font-size: 10pt;
+    color: #6b7280;
+    margin-top: 2mm;
+  }
+
+  .title-page .meta {
+    font-size: 9pt;
+    color: #6b7280;
+    margin-top: 8mm;
+    padding-top: 5mm;
+    border-top: 1px solid #d6d3cc;
+  }
+
+  .title-page .meta span {
+    margin: 0 8px;
+  }
+
+  /* ─── Table of Contents ─── */
+  .toc-page {
+    page: toc;
+    page-break-before: always;
+  }
+
+  .toc-page h2 {
+    font-size: 18pt;
+    color: #1e3a5f;
+    margin-bottom: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 2px solid #1e3a5f;
+  }
+
+  .toc-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .toc-list li {
+    padding: 2mm 0;
+    border-bottom: 1px solid #f1f5f9;
+    overflow: hidden;
+  }
+
+  .toc-list li.toc-section {
+    font-weight: bold;
+    font-size: 11pt;
+    padding-top: 4mm;
+    color: #0f172a;
+  }
+
+  .toc-list li.toc-sub {
+    padding-left: 8mm;
+    font-size: 9.5pt;
+    color: #475569;
+  }
+
+  .toc-score {
+    display: inline-block;
+    float: right;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 9pt;
+    font-weight: bold;
+    color: white;
+  }
+
+  .score-good { background: #2d6a4f; }
+  .score-warn { background: #d4740e; }
+  .score-bad { background: #c53030; }
+
+  /* ─── Section Styles ─── */
+  div.section {
+    page-break-before: always;
+  }
+
+  .section-header {
+    background: #faf9f7;
+    border-left: 4px solid #1e3a5f;
+    padding: 5mm 6mm;
+    margin-bottom: 6mm;
+    page-break-after: avoid;
+  }
+
+  .section-header h2 {
+    font-size: 16pt;
+    color: #0f172a;
+    margin-bottom: 1mm;
+  }
+
+  .section-header .section-score {
+    font-size: 12pt;
+    font-weight: bold;
+    float: right;
+    margin-top: -6mm;
+  }
+
+  h3 {
+    font-size: 12pt;
+    color: #1e3a5f;
+    margin-top: 6mm;
+    margin-bottom: 3mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 1px solid #d6d3cc;
+    page-break-after: avoid;
+  }
+
+  h4 {
+    font-size: 10.5pt;
+    color: #334155;
+    margin-top: 4mm;
+    margin-bottom: 2mm;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin-bottom: 3mm;
+    color: #334155;
+  }
+
+  .highlight {
+    background: #fef3c7;
+    border-left: 3px solid #d4740e;
+    padding: 3mm 4mm;
+    margin: 4mm 0;
+    font-size: 9.5pt;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  .critical-box {
+    background: #fef2f2;
+    border-left: 3px solid #c53030;
+    padding: 3mm 4mm;
+    margin: 4mm 0;
+    font-size: 9.5pt;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  .success-box {
+    background: #f0fdf4;
+    border-left: 3px solid #2d6a4f;
+    padding: 3mm 4mm;
+    margin: 4mm 0;
+    font-size: 9.5pt;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  /* ─── Tables ─── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4mm 0 6mm 0;
+    font-size: 9pt;
+  }
+
+  thead th {
+    background: #f7f6f3;
+    color: #0f172a;
+    font-weight: bold;
+    padding: 3mm 4mm;
+    text-align: left;
+    border-bottom: 2px solid #d6d3cc;
+    font-size: 9pt;
+  }
+
+  tbody td {
+    padding: 2.5mm 3mm;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+  }
+
+  tbody tr:nth-child(even) {
+    background: #fdfcfa;
+  }
+
+  .status-pass {
+    color: #2d6a4f;
+    font-weight: bold;
+  }
+
+  .status-fail {
+    color: #c53030;
+    font-weight: bold;
+  }
+
+  .status-warn {
+    color: #d4740e;
+    font-weight: bold;
+  }
+
+  .status-partial {
+    color: #4a5568;
+    font-weight: bold;
+  }
+
+  /* ─── Charts ─── */
+  .chart-container {
+    text-align: center;
+    margin: 4mm 0;
+  }
+
+  .chart-container img {
+    max-width: 100%;
+    max-height: 120mm;
+    height: auto;
+  }
+
+  .chart-caption {
+    font-size: 8.5pt;
+    color: #6b7280;
+    font-style: italic;
+    margin-top: 2mm;
+    text-align: center;
+  }
+
+  .chart-half {
+    display: inline-block;
+    width: 48%;
+    vertical-align: top;
+    text-align: center;
+    margin: 2mm 0;
+  }
+
+  .chart-half img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ─── Two column layout ─── */
+  .two-col {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    margin: 3mm 0;
+  }
+
+  .two-col .col {
+    display: table-cell;
+    vertical-align: top;
+    padding: 0 2mm;
+  }
+
+  .four-col {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    margin: 3mm 0;
+  }
+
+  .four-col .col {
+    display: table-cell;
+    vertical-align: top;
+    padding: 0 1.5mm;
+  }
+
+  /* ─── Metric Cards ─── */
+  .metric-card {
+    background: #faf9f7;
+    border: 1px solid #d6d3cc;
+    border-radius: 6px;
+    padding: 2.5mm 3mm;
+    text-align: center;
+    margin: 2mm 0;
+  }
+
+  .metric-card .value {
+    font-size: 14pt;
+    font-weight: bold;
+    line-height: 1.2;
+  }
+
+  .metric-card .label {
+    font-size: 7.5pt;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 1mm;
+  }
+
+  /* ─── Action Plan ─── */
+  .action-item {
+    background: #faf9f7;
+    border-radius: 4px;
+    padding: 3mm 4mm;
+    margin: 3mm 0;
+    border-left: 3px solid #cbd5e1;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  .action-item.critical {
+    border-left-color: #c53030;
+    background: #fdf2f2;
+  }
+
+  .action-item.high {
+    border-left-color: #d4740e;
+    background: #fdf8ef;
+  }
+
+  .action-item.medium {
+    border-left-color: #1e3a5f;
+    background: #f0f4f8;
+  }
+
+  .action-item.low {
+    border-left-color: #94a3b8;
+  }
+
+  .action-item h4 {
+    margin-top: 0;
+    margin-bottom: 1.5mm;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .action-item .effort {
+    font-size: 8.5pt;
+    color: #64748b;
+    float: right;
+  }
+
+  .priority-tag {
+    display: inline-block;
+    padding: 0.5mm 3mm;
+    border-radius: 3px;
+    font-size: 8pt;
+    font-weight: bold;
+    color: white;
+    margin-right: 2mm;
+    vertical-align: middle;
+  }
+
+  .priority-critical { background: #c53030; }
+  .priority-high { background: #d4740e; }
+  .priority-medium { background: #1e3a5f; }
+  .priority-low { background: #94a3b8; }
+
+  /* ─── Code blocks ─── */
+  .code-block {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 3mm 4mm;
+    border-radius: 4px;
+    font-family: 'DejaVu Sans Mono', monospace;
+    font-size: 8pt;
+    line-height: 1.6;
+    margin: 3mm 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  /* ─── Divider ─── */
+  .divider {
+    border: none;
+    border-top: 1px solid #d6d3cc;
+    margin: 5mm 0;
+  }
+
+  /* ─── Roadmap ─── */
+  .roadmap-phase {
+    background: #faf9f7;
+    border-radius: 6px;
+    padding: 4mm 5mm;
+    margin: 4mm 0;
+    border: 1px solid #d6d3cc;
+    /* allow page breaks to prevent white gaps */
+  }
+
+  .roadmap-phase h4 {
+    margin-top: 0;
+    border-bottom: none;
+    color: #1e3a5f;
+  }
+
+  .roadmap-phase ul {
+    margin: 2mm 0 0 5mm;
+    padding: 0;
+  }
+
+  .roadmap-phase li {
+    margin-bottom: 1.5mm;
+    font-size: 9.5pt;
+    color: #334155;
+  }
+
+  /* ─── Lists ─── */
+  ul {
+    margin-left: 5mm;
+    margin-bottom: 3mm;
+  }
+
+  li {
+    margin-bottom: 1.5mm;
+  }
+
+  /* ─── Data freshness ─── */
+  .data-freshness {
+    font-size: 8pt;
+    color: #6b7280;
+    font-style: italic;
+    margin-top: 4mm;
+    padding-top: 2mm;
+    border-top: 1px solid #d6d3cc;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ======================================================= TITLE PAGE === -->
+<div class="title-page">
+  <div class="badge">Full SEO Audit Report</div>
+  <h1>printora.app</h1>
+  <div class="subtitle">Prepared by Claude SEO</div>
+  <div class="score-box">
+    <div class="score-number">72<span style="font-size: 20pt; color: #94a3b8;">/100</span></div>
+    <div class="score-label">SEO Health Score</div>
+  </div>
+  <div class="meta">
+    <span>October 07, 2026</span>
+    <span>Full Audit</span>
+  </div>
+</div>
+
+
+<!-- ======================================================= TABLE OF CONTENTS === -->
+<div class="toc-page">
+  <h2>Table of Contents</h2>
+  <ul class="toc-list">
+    <li class="toc-section"><span>1. Executive Summary</span></li>
+    <li class="toc-sub"><span>Key Metrics, Critical Issues &amp; Quick Wins</span></li>
+    <li class="toc-section"><span>2. Audit Categories</span></li>
+    <li class="toc-sub"><span>What Works</span></li>
+    <li class="toc-sub"><span>Findings by Severity</span></li>
+    <li class="toc-section"><span>3. Action Plan</span></li>
+    <li class="toc-sub"><span>Phased Roadmap</span></li>
+    <li class="toc-section"><span>4. Data Sources &amp; Methodology</span></li>
+  </ul>
+</div>
+
+
+<!-- ======================================================= 1. EXECUTIVE SUMMARY === -->
+<div class="section">
+  <div class="section-header">
+    <h2>1. Executive Summary</h2>
+  </div>
+
+  <p>This report presents a comprehensive SEO audit of <strong>printora.app</strong> for a <strong>Software / SaaS / Consumer Utility Tool (Cross-Platform Mobile &amp; Desktop)</strong> site, generated on October 07, 2026. Findings combine technical, content, schema, performance, visual, and search-readiness evidence as available.</p>
+
+  <div class="two-col">
+    <div class="col">
+      <div class="metric-card">
+        <div class="value" style="color: #d4740e;">72/100</div>
+        <div class="label">SEO Health Score</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="critical-box">
+    <strong>Critical Issues Found:</strong>
+    <ol>
+      <li>Missing canonical link tags across 100% of pages (26/26 routes lack &lt;link rel=&quot;canonical&quot;&gt;)</li>
+      <li>Sitewide FAQPage schema pollution: RootLayout injects 10 FAQ Q&amp;As onto all 26 pages, violating Google Search guidelines</li>
+      <li>Duplicated brand suffix in page titles: /guides, /support, and /terms render with &#x27;... | Printora | Printora&#x27;</li>
+      <li>Sitewide OpenGraph and Twitter card cloning: all subpages inherit generic homepage social preview cards and point og:url to the homepage</li>
+      <li>Thin content risk on 9 high-intent landing pages (&lt;300 words on key conversion and feature URLs)</li>
+    </ol>
+  </div>
+
+  <div class="success-box">
+    <strong>Quick Wins:</strong>
+    <ol>
+      <li>Add `alternates: { canonical: &#x27;./&#x27; }` in `layout.tsx` to automatically emit canonical tags on all routes</li>
+      <li>Isolate `&lt;JsonLd /&gt;` FAQPage schema so it only renders on `/` and `/faq` rather than sitewide in `RootLayout`</li>
+      <li>Fix title duplication in `guides/page.tsx`, `support/page.tsx`, and `terms/page.tsx` by removing redundant ` | Printora`</li>
+      <li>Add `/qr-code-web-printing` to `Footer.tsx` and navbar to resolve internal linking asymmetry</li>
+      <li>Fix H1 to H3 skip in `guides/page.tsx` by wrapping guide cards in an accessible `&lt;h2&gt;` section heading</li>
+    </ol>
+  </div>
+
+</div>
+
+<!-- ======================================================= 2. AUDIT CATEGORIES === -->
+<div class="section">
+  <div class="section-header">
+    <h2>2. Audit Categories</h2>
+  </div>
+
+  <h3>2.1 Technical SEO</h3>
+  <p><strong>Score:</strong> <span class="status-warn">68/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>100% HTTP 200 responses across all 26 crawled URLs with 0 broken links</li>
+    <li>Valid robots.txt properly linking to XML sitemap</li>
+    <li>Clean XML sitemap with 26 accurate routes, priorities, and lastmod timestamps</li>
+    <li>100% static prerendering with Next.js Turbopack engine (&lt;20ms TTFB)</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Complete Absence of Canonical URL Tags <span class="status-warn">Critical</span></h4>
+    <p>None of the 26 pages on the site output a `&lt;link rel=&quot;canonical&quot;&gt;` tag. Without canonical tags, search engines cannot resolve URL parameter variations, tracking tags, or protocol duplicates, diluting link equity.</p>
+    <p><strong>Recommendation:</strong> Configure `alternates: { canonical: &#x27;./&#x27; }` in `src/app/layout.tsx` and ensure page-specific canonicals are preserved.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Missing HTTP Security and Hardening Headers <span class="status-warn">High</span></h4>
+    <p>The response headers expose `X-Powered-By: Next.js` and lack `X-Frame-Options`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy`.</p>
+    <p><strong>Recommendation:</strong> Add a `headers()` block in `next.config.ts` specifying strict security headers and set `poweredByHeader: false`.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Internal Link Asymmetry for /qr-code-web-printing <span class="status-warn">Medium</span></h4>
+    <p>While 25 routes have 26 inbound internal links each from global navigation, `/qr-code-web-printing` only has 1 inbound link on the entire site because it is omitted from Footer.tsx.</p>
+    <p><strong>Recommendation:</strong> Add `/qr-code-web-printing` to the Solutions column in `src/components/Footer.tsx`.</p>
+  </div>
+  <hr class="divider">
+  <h3>2.2 Content Quality</h3>
+  <p><strong>Score:</strong> <span class="status-warn">72/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>In-depth 3,259-word homepage with comprehensive technical architecture and hardware specifications</li>
+    <li>Clear, user-focused instructions covering both Android native and iOS QR web workflows</li>
+    <li>Strong privacy and transparency focus explaining local-first data processing</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Thin Content on 9 High-Intent Feature &amp; Landing Pages <span class="status-warn">High</span></h4>
+    <p>Nine routes contain fewer than 300 words of body copy (/mobile-document-scanner-to-pdf: 236w, /download/android: 261w, /features/ocr: 264w, /qr-code-web-printing: 267w, /remote-printing-from-phone: 267w, /print-from-ipad-to-windows-printer: 271w, /features/document-scanner: 272w, /id-card-scanner-to-pdf: 273w, /download/windows: 293w). These pages target high-volume search queries and risk being deemed doorway or low-value pages.</p>
+    <p><strong>Recommendation:</strong> Expand thin landing pages to 500-750 words by adding step-by-step troubleshooting, system requirements, FAQ accordions, and hardware tips.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Lack of Visible Author &amp; Editorial Timestamps (E-E-A-T) <span class="status-warn">Medium</span></h4>
+    <p>Guide and technical pages attribute authorship to generic &#x27;Printora Team&#x27; with no individual author bio, technical reviewer profile, or visible &#x27;Last Updated&#x27; date.</p>
+    <p><strong>Recommendation:</strong> Add structured author/reviewer credits and a visible &#x27;Last updated on [Date]&#x27; badge to all guides and technical documentation.</p>
+  </div>
+  <hr class="divider">
+  <h3>2.3 On-Page SEO</h3>
+  <p><strong>Score:</strong> <span class="status-warn">70/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>100% of pages have unique, descriptive H1 tags</li>
+    <li>100% of pages have meta descriptions defined</li>
+    <li>Concise, keyword-relevant URL slugs across all routes</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Doubled Brand Suffix in Titles (/guides, /support, /terms) <span class="status-warn">High</span></h4>
+    <p>Next.js layout template specifies `%s | Printora`, but three pages explicitly included `| Printora` in their metadata export, rendering titles such as &#x27;Printing &amp; Scanning Guides Hub | Printora | Printora&#x27;.</p>
+    <p><strong>Recommendation:</strong> Strip ` | Printora` from `metadata.title` in `guides/page.tsx`, `support/page.tsx`, and `terms/page.tsx`.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Sitewide Social Preview Duplication (OpenGraph &amp; Twitter) <span class="status-warn">High</span></h4>
+    <p>All 26 pages inherit the root homepage openGraph and twitter card definitions. Every page displays the homepage title, description, and points `og:url` to `https://printora.app`.</p>
+    <p><strong>Recommendation:</strong> Configure dynamic or page-level OpenGraph/Twitter definitions so each route displays its specific title, description, and canonical URL when shared.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Heading Level Skip on /guides (H1 to H3) <span class="status-warn">Low</span></h4>
+    <p>In `src/app/guides/page.tsx`, the document jumps from `&lt;h1&gt;` directly to `&lt;h3&gt;` on the guide cards, skipping `&lt;h2&gt;`.</p>
+    <p><strong>Recommendation:</strong> Wrap the guides grid with a section `&lt;h2&gt;All Guides &amp; Step-by-Step Walkthroughs&lt;/h2&gt;` or change card titles to `&lt;h2&gt;`.</p>
+  </div>
+  <hr class="divider">
+  <h3>2.4 Schema / Structured Data</h3>
+  <p><strong>Score:</strong> <span class="status-warn">58/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>Valid JSON-LD markup without parsing errors</li>
+    <li>Detailed SoftwareApplication schema for Windows and Android platforms</li>
+    <li>Organization schema with official GitHub repository linkage</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Sitewide FAQPage Schema Pollution from RootLayout <span class="status-warn">Critical</span></h4>
+    <p>Because `&lt;JsonLd /&gt;` is placed in `RootLayout`, all 26 pages (including /terms, /privacy, /download/*, and /features/*) inject 10 FAQ items into their structured data. Google Search Central explicitly forbids injecting FAQ markup on pages that do not visually display those exact FAQs.</p>
+    <p><strong>Recommendation:</strong> Remove FAQPage schema from `RootLayout` and inject it selectively on `/` and `/faq` only.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Missing BreadcrumbList Schema on Nested Routes <span class="status-warn">Medium</span></h4>
+    <p>None of the subpages (features, downloads, guides, solutions) output `BreadcrumbList` schema, forfeiting hierarchical breadcrumb trails in search snippets.</p>
+    <p><strong>Recommendation:</strong> Implement `BreadcrumbList` structured data for all subpages.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Missing HowTo Structured Data on Technical Guides <span class="status-warn">Medium</span></h4>
+    <p>Step-by-step guides like `/print-from-android-to-windows-printer` and `/print-from-iphone-to-windows-printer` lack `HowTo` schema with structured steps and prerequisites.</p>
+    <p><strong>Recommendation:</strong> Add `HowTo` schema to all 8 procedural guides.</p>
+  </div>
+  <hr class="divider">
+  <h3>2.5 Performance (CWV)</h3>
+  <p><strong>Score:</strong> <span class="status-pass">96/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>100/100 Lighthouse Desktop Score (A11y: 100, Best Practices: 100, SEO: 100)</li>
+    <li>100/100 Lighthouse Mobile Score (A11y: 100, Best Practices: 100, SEO: 100)</li>
+    <li>Zero server response latency with 100% pre-rendered static HTML</li>
+    <li>Google Fonts optimized via next/font with swap display and WOFF2 preloads</li>
+    <li>Vector diagrams preloaded via Link headers</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Large Inline HTML Payload on Homepage (366KB) <span class="status-warn">Low</span></h4>
+    <p>The homepage raw HTML transfer size is 366KB due to comprehensive embedded content, SVG icons, and inline JSON-LD schemas.</p>
+    <p><strong>Recommendation:</strong> Ensure gzip/brotli compression is active in production edge reverse proxies (Cloudflare).</p>
+  </div>
+  <hr class="divider">
+  <h3>2.6 AI Search Readiness</h3>
+  <p><strong>Score:</strong> <span class="status-warn">65/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>100/100 Agentic Browsing score in Lighthouse audit</li>
+    <li>Explicit permissions granted to GPTBot, ChatGPT-User, ClaudeBot, and PerplexityBot in robots.txt</li>
+    <li>High information density and factual product architecture descriptions</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>Missing llms.txt and llms-full.txt Discovery Endpoints <span class="status-warn">High</span></h4>
+    <p>The standard /llms.txt and /llms-full.txt files returned 404. These files are required by LLM aggregators and AI answer engines to accurately summarize product capabilities.</p>
+    <p><strong>Recommendation:</strong> Create `/public/llms.txt` and `/public/llms-full.txt` providing a concise markdown overview of Printora&#x27;s architecture, compatibility, and core guides.</p>
+  </div>
+  <div class="action-item medium">
+    <h4>Missing .well-known/ai-catalog.json <span class="status-warn">Medium</span></h4>
+    <p>/.well-known/ai-catalog.json returns 404, omitting machine-readable service discovery for autonomous agents.</p>
+    <p><strong>Recommendation:</strong> Provide an AI agent catalog describing the web print studio and local bridge capabilities.</p>
+  </div>
+  <hr class="divider">
+  <h3>2.7 Images</h3>
+  <p><strong>Score:</strong> <span class="status-pass">92/100</span></p>
+  <h4>What Works</h4>
+  <ul>
+    <li>0 missing alt tags across all 26 pages (100% alt compliance)</li>
+    <li>Scalable vector graphics used for high-fidelity workflow schematics</li>
+    <li>Dynamic 1200x630 OpenGraph social image generated via @vercel/og</li>
+  </ul>
+  <h4>Findings</h4>
+  <div class="action-item medium">
+    <h4>PNG Format Used for Brand Assets Without WebP Fallback <span class="status-warn">Low</span></h4>
+    <p>The site uses logo.png (2KB) directly instead of modern WebP or SVG format.</p>
+    <p><strong>Recommendation:</strong> Convert logo.png to SVG or WebP format for optimal compression.</p>
+  </div>
+  <hr class="divider">
+</div>
+
+<!-- ======================================================= 3. ACTION PLAN === -->
+<div class="section">
+  <div class="section-header">
+    <h2>3. Action Plan</h2>
+  </div>
+
+  <div class="roadmap-phase">
+    <h4>Phase 1: Critical Fixes <span class="effort">Immediate (Days 1-2)</span></h4>
+    <ul>
+      <li>Add `alternates: { canonical: &#x27;./&#x27; }` in `src/app/layout.tsx` to restore canonical tags across all 26 pages</li>
+      <li>Remove FAQPage schema from `RootLayout` / `JsonLd.tsx` and place it exclusively on `/` and `/faq`</li>
+      <li>Fix double title suffix (`... | Printora | Printora`) in `guides/page.tsx`, `support/page.tsx`, and `terms/page.tsx`</li>
+      <li>Configure security headers in `next.config.ts` (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, disable X-Powered-By)</li>
+    </ul>
+  </div>
+  <div class="roadmap-phase">
+    <h4>Phase 2: High-Impact Improvements <span class="effort">Week 1</span></h4>
+    <ul>
+      <li>Implement route-specific OpenGraph and Twitter metadata across all 25 subpages</li>
+      <li>Add `/public/llms.txt` and `/public/llms-full.txt` for AI answer engine indexing</li>
+      <li>Add `/qr-code-web-printing` link into `src/components/Footer.tsx`</li>
+      <li>Fix H1 to H3 skip in `src/app/guides/page.tsx` by inserting an H2 container</li>
+    </ul>
+  </div>
+  <div class="roadmap-phase">
+    <h4>Phase 3: Content Depth &amp; Schema Expansion <span class="effort">Weeks 2-3</span></h4>
+    <ul>
+      <li>Expand the 9 thin content pages (&lt;300 words) with dedicated troubleshooting FAQs, technical notes, and hardware checklists</li>
+      <li>Add `BreadcrumbList` schema to all nested routes (/features/*, /download/*, /guides/*)</li>
+      <li>Add `HowTo` schema to the 8 procedural printing and scanning walkthrough pages</li>
+      <li>Add visible author attribution and &#x27;Last updated&#x27; timestamps to improve E-E-A-T</li>
+    </ul>
+  </div>
+  <div class="roadmap-phase">
+    <h4>Phase 4: Monitoring &amp; AI Tooling <span class="effort">Ongoing</span></h4>
+    <ul>
+      <li>Submit updated XML sitemap to Google Search Console and Bing Webmaster Tools</li>
+      <li>Deploy `/.well-known/ai-catalog.json` for autonomous agent compatibility</li>
+      <li>Monitor Core Web Vitals field data in CrUX as real-world traffic scales</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ======================================================= DATA SOURCES & METHODOLOGY === -->
+<div class="section" style="text-align: center; padding-top: 15mm;">
+  <hr class="divider">
+  <h3 style="text-align: left;">Data Sources &amp; Methodology</h3>
+  <table>
+    <thead>
+      <tr><th>Source</th><th>Description</th><th>Update Frequency</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>PageSpeed Insights API</td>
+          <td>Lighthouse lab audit (mobile emulation, Moto G Power, slow 4G)</td>
+          <td>Real-time</td></tr>
+      <tr><td>Chrome UX Report (CrUX)</td>
+          <td>28-day rolling field data from real Chrome users</td>
+          <td>Daily ~04:00 UTC</td></tr>
+      <tr><td>CrUX History API</td>
+          <td>25-week p75 trend data per metric</td>
+          <td>Weekly</td></tr>
+      <tr><td>Google Search Console</td>
+          <td>Search Analytics (clicks, impressions, CTR, position)</td>
+          <td>2-3 day lag</td></tr>
+      <tr><td>URL Inspection API</td>
+          <td>Per-URL index status, coverage state, crawl info</td>
+          <td>Real-time (2,000/day)</td></tr>
+    </tbody>
+  </table>
+  <p style="color: #94a3b8; font-size: 9pt; margin-top: 5mm;">
+    Report generated by Claude SEO (Google SEO Intelligence Skill), October 07, 2026<br>
+    Methodology based on Google Web Vitals thresholds, Search Console documentation, and Lighthouse scoring algorithms.
+  </p>
+</div>
+
+</body>
+</html>

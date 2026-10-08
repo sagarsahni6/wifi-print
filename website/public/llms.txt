@@ -1,0 +1,33 @@
+# Printora
+> Turn Any Windows Printer Into a Printer You Can Use From Anywhere.
+
+Printora transforms standard Windows printers into wireless mobile printing endpoints without needing native Wi-Fi or AirPrint printer hardware. It bridges Android phones (via native Kotlin app), iPhones and iPads (via zero-install QR Web Print Studio in mobile Safari), and remote connections (via Cloudflare Tunnel).
+
+## Core Capabilities
+- **Local-First Wireless Printing**: Connects mobile phones to printers attached to a Windows 10/11 host PC via local Wi-Fi / LAN using mDNS and UDP beacon fallback.
+- **QR Web Print Studio**: Zero-install mobile browser printing for iOS, iPadOS, and guest devices. Scan a QR code on the PC to print directly via mobile Safari or Chrome.
+- **Mobile Camera Document Scanner**: Auto edge detection, perspective correction, filter enhancement, and multi-page compilation (up to 20 pages).
+- **ID Card Scanner to PDF**: Dual-sided scan of driver licenses or ID cards combined onto a single standard A4 sheet.
+- **On-Device OCR**: Text extraction directly on the phone or PC without third-party cloud data transmission.
+- **Optional Secure Remote Printing**: Outbound Cloudflare Tunnel with PIN/token pairing. Zero port forwarding required.
+- **Windows Printer Management**: Live printer telemetry, queue cancellation, and supply monitoring for all Windows spooler devices.
+
+## Documentation & Step-by-Step Guides
+- [How It Works](https://printora.app/how-it-works): Technical architecture and local-first protocol.
+- [Print from Android](https://printora.app/print-from-android-to-windows-printer): Native Kotlin app, mDNS auto-discovery, and Windows spooler transmission.
+- [Print from iPhone](https://printora.app/print-from-iphone-to-windows-printer): Safari QR Web Print Studio walkthrough.
+- [Print from iPad](https://printora.app/print-from-ipad-to-windows-printer): iPadOS browser printing and split-screen PDF preview.
+- [Print to USB Printer](https://printora.app/print-from-phone-to-usb-printer): Legacy non-networked USB printer wireless enablement.
+- [ID Card Scanner to A4 PDF](https://printora.app/id-card-scanner-to-pdf): Dual-sided ID card capture and alignment.
+- [Mobile Document Scanner to PDF](https://printora.app/mobile-document-scanner-to-pdf): Multi-page camera scanning and PDF generation.
+- [Remote 4G/5G Printing](https://printora.app/remote-printing-from-phone): Cloudflare Tunnel configuration without router port opening.
+- [Security Architecture](https://printora.app/security): TLS encryption, SHA-256 certificate fingerprint pinning, and zero permanent cloud retention.
+- [Hardware Compatibility Matrix](https://printora.app/compatibility): Supported Windows versions, Android requirements, and printer brands (HP, Canon, Epson, Brother, thermal label printers).
+
+## Product Specifications
+- **Host Platform**: Windows 10 / Windows 11 (64-bit, .NET 8)
+- **Mobile Client**: Android 8.0+ (Native Kotlin & Jetpack Compose)
+- **Web Client**: Modern mobile browser (Safari iOS 14+, Chrome Android, Edge)
+- **Supported Formats**: PDF, JPG, PNG, BMP, GIF, TXT, DOC, DOCX
+- **Privacy Model**: Local-first direct network execution; automatic temporary file deletion; zero third-party cloud retention.
+- **Open Source Repository**: https://github.com/sagarsahni6/wifi-print

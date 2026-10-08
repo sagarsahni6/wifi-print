@@ -87,3 +87,8 @@ release-package/
 *.zip
 graphify-out/
 .agents/
+
+# Website
+website/node_modules/
+website/.next/
+website/out/
