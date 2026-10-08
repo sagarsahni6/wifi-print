@@ -1,0 +1,265 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif">
+  <title>Printora workflow: phone to encrypted network to Windows PC to printer</title>
+  <defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#E2E8F0"/>
+    </pattern>
+    <linearGradient id="cmy" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#10B981"/>
+      <stop offset="0.5" stop-color="#0A7746"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#0A7746"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <clipPath id="paperClip">
+      <rect x="0" y="40" width="170" height="260"/>
+    </clipPath>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Clean Light Mode Background -->
+  <rect width="1200" height="560" fill="#FBFDF9"/>
+  <rect width="1200" height="560" fill="url(#grid)"/>
+
+  <!-- Title & Status Header -->
+  <text x="60" y="66" fill="#0E171B" font-size="30" font-weight="700">Printora</text>
+  <text x="60" y="92" fill="#526E60" font-size="15">Print from your phone, on any network, to the printer at home. Zero cloud storage.</text>
+  <circle cx="1068" cy="58" r="7" fill="#10B981"/>
+  <circle cx="1088" cy="58" r="7" fill="#0A7746"/>
+  <circle cx="1108" cy="58" r="7" fill="#6EE7B7"/>
+
+  <!-- Network chips (light up in turn) -->
+  <g font-size="13" font-weight="600" text-anchor="middle">
+    <rect x="321" y="120" width="56" height="28" rx="14" fill="#EAF6ED" stroke="#CBE5D4">
+      <animate attributeName="fill" calcMode="discrete" values="#EAF6ED;#0A7746;#EAF6ED;#EAF6ED" keyTimes="0;0.10;0.17;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="349" y="139" fill="#0A7746">Wi-Fi
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#FFFFFF;#0A7746;#0A7746" keyTimes="0;0.10;0.17;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <rect x="385" y="120" width="44" height="28" rx="14" fill="#EAF6ED" stroke="#CBE5D4">
+      <animate attributeName="fill" calcMode="discrete" values="#EAF6ED;#0A7746;#EAF6ED;#EAF6ED" keyTimes="0;0.17;0.24;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="407" y="139" fill="#0A7746">4G
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#FFFFFF;#0A7746;#0A7746" keyTimes="0;0.17;0.24;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <rect x="437" y="120" width="44" height="28" rx="14" fill="#EAF6ED" stroke="#CBE5D4">
+      <animate attributeName="fill" calcMode="discrete" values="#EAF6ED;#0A7746;#EAF6ED;#EAF6ED" keyTimes="0;0.24;0.31;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="459" y="139" fill="#0A7746">5G
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#FFFFFF;#0A7746;#0A7746" keyTimes="0;0.24;0.31;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <rect x="489" y="120" width="100" height="28" rx="14" fill="#EAF6ED" stroke="#CBE5D4">
+      <animate attributeName="fill" calcMode="discrete" values="#EAF6ED;#0A7746;#EAF6ED;#EAF6ED" keyTimes="0;0.31;0.38;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="539" y="139" fill="#0A7746">Any network
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#FFFFFF;#0A7746;#0A7746" keyTimes="0;0.31;0.38;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+  </g>
+
+  <!-- Route line -->
+  <line x1="196" y1="280" x2="714" y2="280" stroke="#CBD5E1" stroke-width="2" stroke-dasharray="6 10">
+    <animate attributeName="stroke-dashoffset" values="0;-16" dur="0.8s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Wi-Fi style waves from phone -->
+  <g fill="none" stroke="#10B981" stroke-width="2">
+    <circle cx="196" cy="280" r="6">
+      <animate attributeName="r" values="6;6;48;48" keyTimes="0;0.06;0.16;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0;0" keyTimes="0;0.06;0.16;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="196" cy="280" r="6">
+      <animate attributeName="r" values="6;6;48;48" keyTimes="0;0.09;0.19;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0;0" keyTimes="0;0.09;0.19;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="196" cy="280" r="6">
+      <animate attributeName="r" values="6;6;48;48" keyTimes="0;0.12;0.22;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0;0" keyTimes="0;0.12;0.22;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Data dots streaming phone to PC (only during transfer) -->
+  <g>
+    <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.12;0.38;1" dur="8s" repeatCount="indefinite"/>
+    <circle r="4" fill="#0A7746" filter="url(#glow)"><animateMotion dur="1.4s" begin="0s" repeatCount="indefinite" path="M200,280 L710,280"/></circle>
+    <circle r="4" fill="#0A7746" filter="url(#glow)"><animateMotion dur="1.4s" begin="-0.28s" repeatCount="indefinite" path="M200,280 L710,280"/></circle>
+    <circle r="4" fill="#0A7746" filter="url(#glow)"><animateMotion dur="1.4s" begin="-0.56s" repeatCount="indefinite" path="M200,280 L710,280"/></circle>
+    <circle r="4" fill="#0A7746" filter="url(#glow)"><animateMotion dur="1.4s" begin="-0.84s" repeatCount="indefinite" path="M200,280 L710,280"/></circle>
+    <circle r="4" fill="#0A7746" filter="url(#glow)"><animateMotion dur="1.4s" begin="-1.12s" repeatCount="indefinite" path="M200,280 L710,280"/></circle>
+  </g>
+
+  <!-- Flying document (passes behind the cloud) -->
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.10;0.12;0.36;0.39;1" dur="8s" repeatCount="indefinite"/>
+    <animateMotion dur="8s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.10;0.38;1" path="M125,262 C160,262 165,280 200,280 L735,280"/>
+    <rect x="-10" y="-13" width="20" height="26" rx="2" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+    <rect x="-6" y="-8" width="12" height="2.5" fill="#0A7746"/>
+    <rect x="-6" y="-3" width="12" height="2" fill="#94A3B8"/>
+    <rect x="-6" y="1" width="12" height="2" fill="#94A3B8"/>
+    <rect x="-6" y="5" width="7" height="2" fill="#94A3B8"/>
+  </g>
+
+  <!-- Phone (Light Mode Stylized) -->
+  <g transform="translate(60,150)">
+    <rect width="130" height="250" rx="26" fill="#FFFFFF" stroke="#0E171B" stroke-width="2.5"/>
+    <rect x="10" y="14" width="110" height="222" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="65" y="46" text-anchor="middle" fill="#0E171B" font-size="13" font-weight="700">Printora</text>
+    <rect x="33" y="64" width="64" height="86" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+    <rect x="41" y="74" width="34" height="5" fill="#0A7746"/>
+    <rect x="41" y="86" width="48" height="3" fill="#94A3B8"/>
+    <rect x="41" y="93" width="48" height="3" fill="#94A3B8"/>
+    <rect x="41" y="100" width="30" height="3" fill="#94A3B8"/>
+    <rect x="41" y="112" width="48" height="26" rx="2" fill="url(#cmy)"/>
+    <circle cx="65" cy="200" r="14" fill="none" stroke="#10B981" stroke-width="2">
+      <animate attributeName="r" values="14;14;42;42" keyTimes="0;0.04;0.12;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.8;0;0" keyTimes="0;0.04;0.12;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <rect x="25" y="185" width="80" height="30" rx="15" fill="#0A7746">
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#10B981;#0A7746;#0A7746" keyTimes="0;0.04;0.08;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="65" y="205" text-anchor="middle" fill="#FFFFFF" font-size="14" font-weight="700">Print</text>
+    <rect x="45" y="8" width="40" height="4" rx="2" fill="#0E171B"/>
+  </g>
+
+  <!-- Internet cloud (Light Mode) -->
+  <g transform="translate(455,280)">
+    <path d="M-70,25 a30,30 0 0 1 5,-58 a40,40 0 0 1 75,-12 a32,32 0 0 1 55,25 a28,28 0 0 1 -5,45 z" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2">
+      <animate attributeName="stroke" calcMode="discrete" values="#CBD5E1;#10B981;#CBD5E1;#CBD5E1" keyTimes="0;0.20;0.27;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="stroke-width" calcMode="discrete" values="2;3.5;2;2" keyTimes="0;0.20;0.27;1" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <text x="-2" y="-6" text-anchor="middle" fill="#0E171B" font-size="18" font-weight="700">Internet</text>
+    <text x="-2" y="12" text-anchor="middle" fill="#0A7746" font-size="10" font-weight="700">TLS AES-256</text>
+  </g>
+
+  <!-- Windows PC (Light Mode) -->
+  <g transform="translate(720,200)">
+    <rect width="190" height="130" rx="10" fill="#FFFFFF" stroke="#0E171B" stroke-width="2">
+      <animate attributeName="stroke" calcMode="discrete" values="#0E171B;#10B981;#0E171B;#0E171B" keyTimes="0;0.38;0.64;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="10" y="10" width="170" height="110" rx="5" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="10" y="10" width="170" height="20" rx="5" fill="#EAF6ED"/>
+    <g fill="#0A7746">
+      <rect x="17" y="15" width="4" height="4"/><rect x="22" y="15" width="4" height="4"/>
+      <rect x="17" y="20" width="4" height="4"/><rect x="22" y="20" width="4" height="4"/>
+    </g>
+    <text x="34" y="24" fill="#0A7746" font-size="10" font-weight="700">Printora Server</text>
+
+    <!-- status text -->
+    <g font-size="10" text-anchor="middle" fill="#64748B">
+      <text x="95" y="52">Waiting for file
+        <animate attributeName="opacity" calcMode="discrete" values="1;0;1;1" keyTimes="0;0.38;0.92;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="52" opacity="0">Receiving file
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.38;0.64;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="52" opacity="0">Sending to printer
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.64;0.92;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+    </g>
+
+    <!-- percent text -->
+    <g font-size="17" font-weight="700" text-anchor="middle" fill="#0E171B">
+      <text x="95" y="70">0%
+        <animate attributeName="opacity" calcMode="discrete" values="1;0;1;1" keyTimes="0;0.445;0.92;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="70" opacity="0">25%
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.445;0.51;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="70" opacity="0">50%
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.51;0.583;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="70" opacity="0">78%
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.583;0.64;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+      <text x="95" y="70" opacity="0">100%
+        <animate attributeName="opacity" calcMode="discrete" values="0;1;0;0" keyTimes="0;0.64;0.92;1" dur="8s" repeatCount="indefinite"/>
+      </text>
+    </g>
+
+    <!-- progress bar -->
+    <rect x="24" y="86" width="142" height="10" rx="5" fill="#E2E8F0"/>
+    <rect x="24" y="86" width="0" height="10" rx="5" fill="url(#bar)">
+      <animate attributeName="width" values="0;0;142;142;0;0" keyTimes="0;0.38;0.64;0.92;0.93;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- stand -->
+    <rect x="80" y="130" width="30" height="20" fill="#FFFFFF" stroke="#0E171B" stroke-width="2"/>
+    <rect x="55" y="148" width="80" height="9" rx="4.5" fill="#FFFFFF" stroke="#0E171B" stroke-width="2"/>
+  </g>
+
+  <!-- PC to printer cable -->
+  <path d="M912,300 C952,300 942,340 980,340" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-dasharray="6 8">
+    <animate attributeName="stroke-dashoffset" values="0;-14" dur="0.8s" repeatCount="indefinite"/>
+  </path>
+  <g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.64;0.65;0.76;0.77;1" dur="8s" repeatCount="indefinite"/>
+    <animateMotion dur="8s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.64;0.77;1" path="M912,300 C952,300 942,340 980,340"/>
+    <rect x="-8" y="-10" width="16" height="20" rx="2" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+    <rect x="-5" y="-6" width="10" height="2" fill="#0A7746"/>
+    <rect x="-5" y="-1" width="10" height="2" fill="#94A3B8"/>
+    <rect x="-5" y="3" width="6" height="2" fill="#94A3B8"/>
+  </g>
+
+  <!-- Printer (Light Mode) -->
+  <g transform="translate(980,250)">
+    <!-- paper output: sits behind body, slides out below it -->
+    <g clip-path="url(#paperClip)">
+      <g opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.77;0.78;0.96;0.99;1" dur="8s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 95;0 95" keyTimes="0;0.78;0.9;1" dur="8s" repeatCount="indefinite"/>
+        <rect x="35" y="-2" width="100" height="120" rx="3" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+        <rect x="45" y="12" width="50" height="6" fill="#0A7746"/>
+        <rect x="45" y="28" width="80" height="3" fill="#94A3B8"/>
+        <rect x="45" y="36" width="80" height="3" fill="#94A3B8"/>
+        <rect x="45" y="44" width="56" height="3" fill="#94A3B8"/>
+        <rect x="45" y="60" width="80" height="38" rx="2" fill="url(#cmy)"/>
+        <rect x="45" y="104" width="40" height="3" fill="#94A3B8"/>
+      </g>
+    </g>
+    <!-- body -->
+    <rect x="0" y="40" width="170" height="80" rx="12" fill="#FFFFFF" stroke="#0E171B" stroke-width="2"/>
+    <rect x="22" y="104" width="126" height="8" rx="4" fill="#0E171B"/>
+    <path d="M40,44 L48,16 L122,16 L130,44 Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <!-- ink dots -->
+    <circle cx="22" cy="66" r="5" fill="#10B981">
+      <animate attributeName="opacity" values="0.4;0.4;1;0.4;1;0.4;0.4" keyTimes="0;0.78;0.82;0.85;0.88;0.9;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="38" cy="66" r="5" fill="#0A7746">
+      <animate attributeName="opacity" values="0.4;0.4;1;0.4;1;0.4;0.4" keyTimes="0;0.79;0.83;0.86;0.89;0.91;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="54" cy="66" r="5" fill="#34D399">
+      <animate attributeName="opacity" values="0.4;0.4;1;0.4;1;0.4;0.4" keyTimes="0;0.80;0.84;0.87;0.9;0.92;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+    <!-- status LED -->
+    <circle cx="148" cy="66" r="5" fill="#E2E8F0">
+      <animate attributeName="fill" calcMode="discrete" values="#E2E8F0;#F59E0B;#10B981;#E2E8F0;#E2E8F0" keyTimes="0;0.77;0.9;0.96;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Done badge -->
+  <g transform="translate(1142,452)">
+    <animateTransform attributeName="transform" type="scale" additive="sum" values="0;0;1.25;1;1;0" keyTimes="0;0.9;0.93;0.95;0.99;1" dur="8s" repeatCount="indefinite"/>
+    <circle r="16" fill="#10B981"/>
+    <path d="M-7,0 L-2,6 L8,-6" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Step captions (current step lights up) -->
+  <g font-size="15" font-weight="600" text-anchor="middle" fill="#64748B">
+    <text x="125" y="512">Tap Print on your phone
+      <animate attributeName="fill" calcMode="discrete" values="#0A7746;#64748B;#64748B" keyTimes="0;0.12;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <text x="455" y="512">Travels over encrypted network
+      <animate attributeName="fill" calcMode="discrete" values="#64748B;#0A7746;#64748B;#64748B" keyTimes="0;0.12;0.38;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <text x="815" y="512">Server on your PC receives it
+      <animate attributeName="fill" calcMode="discrete" values="#64748B;#0A7746;#64748B;#64748B" keyTimes="0;0.38;0.77;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+    <text x="1065" y="512">Printer prints it
+      <animate attributeName="fill" calcMode="discrete" values="#64748B;#0A7746;#64748B;#64748B" keyTimes="0;0.77;0.96;1" dur="8s" repeatCount="indefinite"/>
+    </text>
+  </g>
+</svg>
