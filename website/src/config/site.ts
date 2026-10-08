@@ -27,6 +27,12 @@ export const siteConfig = {
     { title: "Phone Scan to PDF", href: "/mobile-document-scanner-to-pdf" },
     { title: "QR Web Print Architecture", href: "/qr-code-web-printing" },
   ],
+  comparisons: [
+    { title: "Compare All", href: "/compare" },
+    { title: "PrinterShare Alternative", href: "/compare/printershare-alternative" },
+    { title: "Google Cloud Print Alternative", href: "/compare/google-cloud-print-alternative" },
+    { title: "NokoPrint Alternative", href: "/compare/nokoprint-alternative" },
+  ],
   featureSubnav: [
     { title: "Wireless Printing", href: "/features/wireless-printing", desc: "Print directly from Android or browser" },
     { title: "Document Scanner", href: "/features/document-scanner", desc: "Camera scanner with edge detection & OCR" },

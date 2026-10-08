@@ -73,6 +73,12 @@ export function Navbar() {
             Web Print
           </Link>
           <Link
+            href="/compare"
+            className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
+          >
+            Compare
+          </Link>
+          <Link
             href="/faq"
             className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors"
           >
@@ -134,6 +140,13 @@ export function Navbar() {
               className="px-3 py-2 rounded-lg text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900"
             >
               Web Print
+            </Link>
+            <Link
+              href="/compare"
+              onClick={() => setMobileMenuOpen(false)}
+              className="px-3 py-2 rounded-lg text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900"
+            >
+              Compare
             </Link>
             <Link
               href="/faq"

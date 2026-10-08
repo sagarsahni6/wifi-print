@@ -29,12 +29,23 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/mobile-document-scanner-to-pdf",
     "/id-card-scanner-to-pdf",
     "/remote-printing-from-phone",
+    "/compare",
+    "/compare/printershare-alternative",
+    "/compare/google-cloud-print-alternative",
+    "/compare/nokoprint-alternative",
   ];
 
   return routes.map((route) => ({
     url: `${siteConfig.url}${route}`,
-    lastModified: "2026-10-07",
+    lastModified: "2026-10-08",
     changeFrequency: route === "" ? ("weekly" as const) : ("monthly" as const),
-    priority: route === "" ? 1.0 : route.startsWith("/download") || route.startsWith("/features") ? 0.8 : 0.7,
+    priority:
+      route === ""
+        ? 1.0
+        : route.startsWith("/compare")
+        ? 0.85
+        : route.startsWith("/download") || route.startsWith("/features")
+        ? 0.8
+        : 0.7,
   }));
 }

@@ -24,6 +24,12 @@ Printora transforms standard Windows printers into wireless mobile printing endp
 - [Security Architecture](https://printora.app/security): TLS encryption, SHA-256 certificate fingerprint pinning, and zero permanent cloud retention.
 - [Hardware Compatibility Matrix](https://printora.app/compatibility): Supported Windows versions, Android requirements, and printer brands (HP, Canon, Epson, Brother, thermal label printers).
 
+## Competitor Alternatives & Comparisons
+- [Comparison Hub](https://printora.app/compare): Overview of why users switch from proprietary or legacy mobile print apps to Printora.
+- [Free PrinterShare Alternative](https://printora.app/compare/printershare-alternative): Zero subscriptions ($0 vs $12.95), zero ads, no accounts, and Safari QR Web Print for iPhone without installing an app.
+- [Google Cloud Print Alternative](https://printora.app/compare/google-cloud-print-alternative): Privacy-first local-first + Cloudflare Tunnel alternative to discontinued Google Cloud Print, with offline Wi-Fi support and <15MB RAM usage.
+- [Ad-Free NokoPrint Alternative](https://printora.app/compare/nokoprint-alternative): Zero video ads, automatic zero-configuration mDNS discovery (no manual SMB IP typing), and zero Windows user passwords required.
+
 ## Product Specifications
 - **Host Platform**: Windows 10 / Windows 11 (64-bit, .NET 8)
 - **Mobile Client**: Android 8.0+ (Native Kotlin & Jetpack Compose)

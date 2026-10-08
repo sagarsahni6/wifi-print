@@ -143,6 +143,26 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/compare" className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
+                  Compare Alternatives
+                </Link>
+              </li>
+              <li>
+                <Link href="/compare/printershare-alternative" className="hover:text-white transition-colors text-[11px] text-slate-400">
+                  vs PrinterShare
+                </Link>
+              </li>
+              <li>
+                <Link href="/compare/google-cloud-print-alternative" className="hover:text-white transition-colors text-[11px] text-slate-400">
+                  vs Google Cloud Print
+                </Link>
+              </li>
+              <li>
+                <Link href="/compare/nokoprint-alternative" className="hover:text-white transition-colors text-[11px] text-slate-400">
+                  vs NokoPrint
+                </Link>
+              </li>
+              <li>
                 <Link href="/faq" className="hover:text-white transition-colors">
                   FAQ
                 </Link>
