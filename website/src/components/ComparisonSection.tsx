@@ -43,7 +43,7 @@ export function ComparisonSection() {
     <section className="py-20 sm:py-28 bg-white dark:bg-slate-950 border-t border-slate-200/80 dark:border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold mb-3">
             <span>Workflow Evolution</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -59,7 +59,7 @@ export function ComparisonSection() {
           <div className="grid grid-cols-12 bg-slate-50 dark:bg-slate-950/80 p-4 border-b border-slate-200 dark:border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
             <div className="col-span-3 sm:col-span-3">Task</div>
             <div className="col-span-4 sm:col-span-4 text-rose-700 dark:text-rose-400">Traditional Methods</div>
-            <div className="col-span-5 sm:col-span-5 text-blue-700 dark:text-blue-400">With Printora</div>
+            <div className="col-span-5 sm:col-span-5 text-emerald-700 dark:text-emerald-400">With Printora</div>
           </div>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">

@@ -18,7 +18,7 @@ export function Footer() {
           {/* Brand Column (2 cols on md) */}
           <div className="col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-2.5 font-bold text-lg text-white group">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200">
+              <div className="w-8 h-8 rounded-xl bg-emerald-700 flex items-center justify-center text-white shadow-md shadow-emerald-700/20 group-hover:scale-105 transition-transform duration-200">
                 <Printer className="w-4 h-4" />
               </div>
               <span className="font-extrabold text-base tracking-tight text-white">

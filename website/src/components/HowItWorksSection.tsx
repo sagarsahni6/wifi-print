@@ -32,7 +32,7 @@ export function HowItWorksSection() {
     <section id="how-it-works" className="py-20 sm:py-28 bg-white dark:bg-slate-950 border-t border-slate-200/80 dark:border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold mb-3">
             <span>Setup & Workflow</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -50,14 +50,14 @@ export function HowItWorksSection() {
             return (
               <div 
                 key={step.num}
-                className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between hover:border-blue-500/50 transition-colors group"
+                className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between hover:border-emerald-500/50 transition-colors group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-6">
-                    <span aria-hidden="true" className="font-mono text-2xl font-black text-blue-700 dark:text-blue-400 group-hover:text-blue-600 transition-colors">
+                    <span aria-hidden="true" className="font-mono text-2xl font-black text-emerald-700 dark:text-emerald-400 group-hover:text-emerald-600 transition-colors">
                       {step.num}
                     </span>
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
                       <Icon className="w-5 h-5" />
                     </div>
                   </div>

@@ -93,7 +93,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col font-sans bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-blue-500/20 selection:text-blue-600">
+      <body className="min-h-screen flex flex-col font-sans bg-[var(--background)] text-[var(--foreground)] antialiased selection:bg-emerald-500/20 selection:text-emerald-700">
         <JsonLd />
         <Navbar />
         <main className="flex-1">{children}</main>

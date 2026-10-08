@@ -4,36 +4,36 @@
 
 @layer base {
   :root {
-    --background: #f8fafc;
-    --foreground: #0f172a;
+    --background: #fbfcf9;
+    --foreground: #0e171b;
     --card: #ffffff;
-    --card-foreground: #0f172a;
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
-    --border: #e2e8f0;
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
+    --card-foreground: #0e171b;
+    --muted: #f2f6f3;
+    --muted-foreground: #5e6d65;
+    --border: #e2e8e3;
+    --primary: #0a7746;
+    --primary-hover: #08633a;
     --primary-foreground: #ffffff;
-    --secondary: #0ea5e9;
-    --accent: #4f46e5;
+    --secondary: #10b981;
+    --accent: #059669;
     --success: #10b981;
     --warning: #f59e0b;
     --destructive: #ef4444;
   }
 
   .dark {
-    --background: #070a12;
-    --foreground: #f8fafc;
-    --card: #0d121f;
-    --card-foreground: #f8fafc;
-    --muted: #161f33;
-    --muted-foreground: #94a3b8;
-    --border: #1e293b;
-    --primary: #3b82f6;
-    --primary-hover: #60a5fa;
-    --primary-foreground: #ffffff;
-    --secondary: #38bdf8;
-    --accent: #6366f1;
+    --background: #08120d;
+    --foreground: #f4faf6;
+    --card: #0e1b13;
+    --card-foreground: #f4faf6;
+    --muted: #13241a;
+    --muted-foreground: #8fa397;
+    --border: #182e21;
+    --primary: #10b981;
+    --primary-hover: #34d399;
+    --primary-foreground: #08120d;
+    --secondary: #059669;
+    --accent: #34d399;
     --success: #34d399;
     --warning: #fbbf24;
     --destructive: #f87171;
