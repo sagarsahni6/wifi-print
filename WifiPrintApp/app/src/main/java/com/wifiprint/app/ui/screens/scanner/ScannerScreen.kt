@@ -302,6 +302,36 @@ fun ScannerScreen(
         return
     }
 
+    // ── If Review Mode is Active (showCamera == false) and pages exist ──
+    if (!state.showCamera && state.scannedPages.isNotEmpty()) {
+        ReviewView(
+            modifier = Modifier.fillMaxSize(),
+            state = state,
+            onSelectPage = { viewModel.selectPage(it) },
+            onDeletePage = { viewModel.removePage(it) },
+            onApplyFilter = { pageIdx, filter -> viewModel.applyFilterToPage(pageIdx, filter) },
+            onBackToCamera = { viewModel.setShowCamera(true) },
+            onExportPdf = { viewModel.directPrint() },
+            onSharePdf = { viewModel.sharePdf() },
+            onRotatePage = { pageIdx, angle -> viewModel.rotatePage(pageIdx, angle) },
+            onMovePage = { from, to -> viewModel.movePage(from, to) },
+            onEnterCrop = { viewModel.enterCropMode() },
+            onUpdateCrop = { viewModel.updateCropRect(it) },
+            onApplyCrop = { viewModel.applyCrop(it) },
+            onCancelCrop = { viewModel.cancelCrop() },
+            onToggleAdjustments = { viewModel.toggleAdjustments(it) },
+            onBrightnessChange = { viewModel.updateBrightness(it) },
+            onContrastChange = { viewModel.updateContrast(it) },
+            onApplyAdjustments = { viewModel.applyBrightnessContrast(it) },
+            onRunOcr = { viewModel.runOcr(it) },
+            onSetPageSize = { viewModel.setPageSize(it) },
+            onSetWatermarkText = { viewModel.setWatermarkText(it) },
+            onToggleWatermark = { viewModel.toggleWatermark(it) },
+            onSetWatermarkOpacity = { viewModel.setWatermarkOpacity(it) }
+        )
+        return
+    }
+
     // ── Main Document Scanner Layout ────────────────────────────────
     Column(
         modifier = Modifier
@@ -310,6 +340,31 @@ fun ScannerScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Scanned pages quick access banner
+        if (state.scannedPages.isNotEmpty()) {
+            Surface(
+                onClick = { viewModel.setShowCamera(false) },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Description, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("${state.scannedPages.size} Page(s) Scanned", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Tap to Review, Filter & Direct Print", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                        }
+                    }
+                    Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
         // ── Section Header & Connected Beacon ───────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -770,7 +825,7 @@ fun ScannerScreen(
                         }
 
                         // Color Filter
-                        val filters = listOf("Auto Enhance", "B&W", "Grayscale", "Original")
+                        val filters = listOf("Magic Color", "Clean B&W", "Auto Enhance", "Grayscale", "Sharp", "Original")
                         val currentFilter = state.scannedPages[safeIndex].filter
                         Card(
                             onClick = {
@@ -1006,7 +1061,14 @@ fun ScannerScreen(
                     step = state.idCardStep,
                     frontBitmap = state.idCardFrontBitmap,
                     backBitmap = state.idCardBackBitmap,
+                    compositePreviewBitmap = state.idCardCompositePreviewBitmap,
+                    selectedFilter = state.idCardFilter,
+                    selectedLayout = state.idCardLayout,
+                    onSelectFilter = { viewModel.setIdCardFilter(it) },
+                    onSelectLayout = { viewModel.setIdCardLayout(it) },
                     isProcessing = state.isProcessing,
+                    isSavingPdf = state.isSavingPdf,
+                    isDirectPrinting = state.isDirectPrinting,
                     idCardFrontOnly = state.idCardFrontOnly,
                     onToggleFrontOnly = { viewModel.toggleIdCardFrontOnly(it) },
                     onScanFront = {
@@ -1029,9 +1091,13 @@ fun ScannerScreen(
                                 }
                         }
                     },
+                    onRetakeFront = { viewModel.retakeFront() },
+                    onRetakeBack = { viewModel.retakeBack() },
                     onSkipBack = { viewModel.skipIdCardBackSide() },
                     isBackSkipped = state.isBackSkipped,
                     onCombine = { viewModel.combineIdCardSides() },
+                    onDirectPrint = { viewModel.directPrintIdCard() },
+                    onSavePdf = { viewModel.savePdfIdCard() },
                     onReset = { viewModel.resetIdCard() }
                 )
             }
@@ -1272,19 +1338,31 @@ private fun BatchModeView(
 //  ID Card Mode View (existing, unchanged)
 // ═══════════════════════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun IdCardModeView(
     step: IdCardStep,
     frontBitmap: Bitmap?,
     backBitmap: Bitmap?,
+    compositePreviewBitmap: Bitmap? = null,
+    selectedFilter: String = "Magic Color",
+    selectedLayout: IdCardLayout = IdCardLayout.SideBySide,
+    onSelectFilter: (String) -> Unit = {},
+    onSelectLayout: (IdCardLayout) -> Unit = {},
     isProcessing: Boolean,
+    isSavingPdf: Boolean = false,
+    isDirectPrinting: Boolean = false,
     idCardFrontOnly: Boolean = false,
     onToggleFrontOnly: (Boolean) -> Unit = {},
     onScanFront: () -> Unit,
     onScanBack: () -> Unit,
+    onRetakeFront: () -> Unit = {},
+    onRetakeBack: () -> Unit = {},
     onSkipBack: () -> Unit = {},
     isBackSkipped: Boolean = false,
     onCombine: () -> Unit,
+    onDirectPrint: () -> Unit = {},
+    onSavePdf: () -> Unit = {},
     onReset: () -> Unit
 ) {
     when (step) {
@@ -1319,7 +1397,6 @@ private fun IdCardModeView(
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Front Only option
                     Surface(
                         onClick = { onToggleFrontOnly(true) },
                         modifier = Modifier.weight(1f),
@@ -1337,7 +1414,6 @@ private fun IdCardModeView(
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
-                    // Both Sides option
                     Surface(
                         onClick = { onToggleFrontOnly(false) },
                         modifier = Modifier.weight(1f),
@@ -1401,13 +1477,13 @@ private fun IdCardModeView(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
-                        onClick = onReset,
+                        onClick = onRetakeFront,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Filled.Refresh, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Retake")
+                        Text("Retake Front")
                     }
                     Button(
                         onClick = onScanBack,
@@ -1438,72 +1514,265 @@ private fun IdCardModeView(
         }
 
         IdCardStep.Preview -> {
-            // Preview
+            // Rich A4 Document Print Preview
+            val isSingle = isBackSkipped || backBitmap == null
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                val isSingle = isBackSkipped || backBitmap == null
-                Text(
-                    if (isSingle) "ID Card Preview (Front Only)" else "ID Card Preview (Both Sides)",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (isSingle) "Front side captured • Back side skipped" else "Both sides captured. Review and add to document.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(14.dp))
-
-                // Front preview
-                Text("FRONT", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(4.dp))
-                frontBitmap?.let {
-                    Image(bitmap = it.asImageBitmap(), contentDescription = "Front",
-                        modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Fit)
-                }
-
-                if (!isSingle && backBitmap != null) {
-                    Spacer(Modifier.height(12.dp))
-                    Text("BACK", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary)
-                    Spacer(Modifier.height(4.dp))
-                    Image(bitmap = backBitmap.asImageBitmap(), contentDescription = "Back",
-                        modifier = Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Fit)
-                }
-
-                Spacer(Modifier.height(16.dp))
-
+                // Header badge
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = onReset,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Filled.Refresh, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Retake")
+                    Column {
+                        Text(
+                            "ID Card Print Preview",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            if (isSingle) "Single side • Ready to print" else "Front + Back • 300 DPI A4 Document",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Green400.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            "ISO/IEC 7810 Standard",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Green400
+                        )
+                    }
+                }
+
+                // Simulated A4 Page Preview Card
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .aspectRatio(1f / 1.414f)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (compositePreviewBitmap != null) {
+                            Image(
+                                bitmap = compositePreviewBitmap.asImageBitmap(),
+                                contentDescription = "A4 Page Preview",
+                                modifier = Modifier.fillMaxSize().padding(10.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else if (frontBitmap != null) {
+                            Image(
+                                bitmap = frontBitmap.asImageBitmap(),
+                                contentDescription = "ID Card Front",
+                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color.Black.copy(alpha = 0.55f),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)
+                        ) {
+                            Text(
+                                "85.6 × 54.0 mm",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // CamScanner Filter Palette
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Document Filter",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Magic Color", "Clean B&W", "Auto Clarify", "Grayscale", "Original").forEach { filter ->
+                            val isSelected = selectedFilter == filter
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSelectFilter(filter) },
+                                label = {
+                                    Text(
+                                        when (filter) {
+                                            "Magic Color" -> "✨ Magic Color"
+                                            "Clean B&W" -> "⬛ Clean B&W"
+                                            "Auto Clarify" -> "⚡ Auto"
+                                            else -> filter
+                                        },
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Layout Selector (if dual-sided)
+                if (!isSingle && backBitmap != null) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Page Layout",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedLayout == IdCardLayout.SideBySide,
+                                onClick = { onSelectLayout(IdCardLayout.SideBySide) },
+                                leadingIcon = { Icon(Icons.Filled.Description, null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Side-by-Side (Top)", style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            FilterChip(
+                                selected = selectedLayout == IdCardLayout.Stacked,
+                                onClick = { onSelectLayout(IdCardLayout.Stacked) },
+                                leadingIcon = { Icon(Icons.Filled.Layers, null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Stacked", style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                // Retake Controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Front Side", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text("Captured ✅", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = Green400)
+                            }
+                            TextButton(onClick = onRetakeFront, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                                Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(2.dp))
+                                Text("Retake", fontSize = 11.sp)
+                            }
+                        }
+                    }
+
+                    if (!isSingle && backBitmap != null) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Back Side", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    Text("Captured ✅", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = Green400)
+                                }
+                                TextButton(onClick = onRetakeBack, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                                    Icon(Icons.Filled.Refresh, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(2.dp))
+                                    Text("Retake", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Primary Actions
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onDirectPrint,
+                            enabled = !isProcessing && !isDirectPrinting && !isSavingPdf,
+                            modifier = Modifier.weight(1.3f).height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        ) {
+                            if (isDirectPrinting) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Filled.Print, null, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Direct Print", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = onSavePdf,
+                            enabled = !isProcessing && !isDirectPrinting && !isSavingPdf,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            if (isSavingPdf) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Save PDF", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
                     Button(
                         onClick = onCombine,
-                        modifier = Modifier.weight(1.3f),
+                        enabled = !isProcessing,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = !isProcessing
+                        colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
-                        if (isProcessing) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        } else {
-                            Icon(Icons.Filled.Check, null)
-                        }
+                        Icon(Icons.Filled.Tune, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(if (isSingle) "Add ID Card" else "Combine & Add")
+                        Text("Open Review Studio (Crop, Watermark, OCR)", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1802,12 +2071,17 @@ private fun ReviewView(
                     .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                listOf("Auto Enhance", "B&W", "Grayscale", "Sharp", "High Contrast", "Original").forEach { filter ->
+                listOf("Magic Color", "Clean B&W", "Auto Enhance", "Grayscale", "Sharp", "Original").forEach { filter ->
                     FilterChip(
                         selected = pages[safeIndex].filter == filter,
                         onClick = { onApplyFilter(safeIndex, filter) },
                         label = {
-                            Text(when (filter) { "Auto Enhance" -> "Auto"; "High Contrast" -> "HiCon"; else -> filter },
+                            Text(when (filter) {
+                                "Magic Color" -> "✨ Magic"
+                                "Clean B&W" -> "⬛ B&W"
+                                "Auto Enhance" -> "⚡ Auto"
+                                else -> filter
+                            },
                                 style = MaterialTheme.typography.labelSmall)
                         },
                         modifier = Modifier.padding(horizontal = 1.dp)

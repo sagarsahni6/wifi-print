@@ -39,7 +39,7 @@ data class ScannedPageData(
     val originalBitmap: Bitmap,
     val bitmap: Bitmap,
     val uri: Uri? = null,
-    val filter: String = "Auto Enhance",
+    val filter: String = "Magic Color",
     val rotation: Int = 0,
     val brightness: Float = 0f,
     val contrast: Float = 1f,
@@ -48,6 +48,7 @@ data class ScannedPageData(
 
 enum class ScanMode { Document, IDCard, Batch }
 enum class IdCardStep { Front, Back, Preview }
+enum class IdCardLayout { SideBySide, Stacked, Single }
 
 /** Page size presets for PDF export */
 enum class PageSize(val label: String, val widthPt: Int, val heightPt: Int) {
@@ -61,7 +62,7 @@ data class ScannerUiState(
     val isCapturing: Boolean = false,
     val scannedPages: List<ScannedPageData> = emptyList(),
     val selectedPageIndex: Int = -1,
-    val currentFilter: String = "Auto Enhance",
+    val currentFilter: String = "Magic Color",
     val isProcessing: Boolean = false,
     val isSavingPdf: Boolean = false,
     val isDirectPrinting: Boolean = false,
@@ -77,6 +78,9 @@ data class ScannerUiState(
     val idCardStep: IdCardStep = IdCardStep.Front,
     val idCardFrontBitmap: Bitmap? = null,
     val idCardBackBitmap: Bitmap? = null,
+    val idCardCompositePreviewBitmap: Bitmap? = null,
+    val idCardLayout: IdCardLayout = IdCardLayout.SideBySide,
+    val idCardFilter: String = "Magic Color",
     val isBackSkipped: Boolean = false,
     val idCardFrontOnly: Boolean = false,
     // ── New advanced features ──
@@ -196,6 +200,7 @@ class ScannerViewModel @Inject constructor(
         _state.update {
             it.copy(idCardBackBitmap = bitmap, idCardStep = IdCardStep.Preview)
         }
+        generateIdCardCompositePreview()
     }
 
     /** Called when ML Kit returns the scanned front side URI (with edge detection). */
@@ -214,6 +219,9 @@ class ScannerViewModel @Inject constructor(
                         isBackSkipped = skipBack
                     )
                 }
+                if (nextStep == IdCardStep.Preview) {
+                    generateIdCardCompositePreview()
+                }
             } else {
                 _state.update { it.copy(isProcessing = false, error = "Failed to load front side image") }
             }
@@ -229,6 +237,7 @@ class ScannerViewModel @Inject constructor(
                 _state.update {
                     it.copy(idCardBackBitmap = bitmap, idCardStep = IdCardStep.Preview, isProcessing = false)
                 }
+                generateIdCardCompositePreview()
             } else {
                 _state.update { it.copy(isProcessing = false, error = "Failed to load back side image") }
             }
@@ -244,49 +253,106 @@ class ScannerViewModel @Inject constructor(
                 isBackSkipped = true
             )
         }
+        generateIdCardCompositePreview()
     }
 
-    /** Combine front+back (or single front if back was skipped) into a page. */
-    fun combineIdCardSides() {
+    /** Generates the live combined A4 preview bitmap for ID card */
+    fun generateIdCardCompositePreview() {
         val front = _state.value.idCardFrontBitmap ?: return
         val back = _state.value.idCardBackBitmap
+        val layout = _state.value.idCardLayout
+        val filter = _state.value.idCardFilter
 
         viewModelScope.launch {
-            _state.update { it.copy(isProcessing = true) }
-
             val composite = withContext(Dispatchers.Default) {
-                if (back != null) {
-                    combineIdCardBitmaps(front, back)
-                } else {
-                    createSingleSideIdCardBitmap(front)
+                val filteredFront = applyFilter(front, filter)
+                val filteredBack = if (back != null) applyFilter(back, filter) else null
+
+                when {
+                    filteredBack == null || layout == IdCardLayout.Single -> {
+                        createSingleSideIdCardBitmap(filteredFront)
+                    }
+                    layout == IdCardLayout.Stacked -> {
+                        combineIdCardBitmapsStacked(filteredFront, filteredBack)
+                    }
+                    else -> {
+                        combineIdCardBitmaps(filteredFront, filteredBack)
+                    }
                 }
             }
-
-            val filtered = withContext(Dispatchers.Default) {
-                applyFilter(composite, _state.value.currentFilter)
-            }
-
-            val page = ScannedPageData(
-                index = _state.value.scannedPages.size,
-                originalBitmap = composite,
-                bitmap = filtered,
-                filter = _state.value.currentFilter
-            )
-
-            _state.update {
-                it.copy(
-                    scannedPages = it.scannedPages + page,
-                    scanMode = ScanMode.Document,
-                    isProcessing = false,
-                    showCamera = false,
-                    idCardStep = IdCardStep.Front,
-                    idCardFrontBitmap = null,
-                    idCardBackBitmap = null,
-                    isBackSkipped = false,
-                    selectedPageIndex = it.scannedPages.size
-                )
-            }
+            _state.update { it.copy(idCardCompositePreviewBitmap = composite) }
         }
+    }
+
+    fun setIdCardFilter(filter: String) {
+        _state.update { it.copy(idCardFilter = filter) }
+        generateIdCardCompositePreview()
+    }
+
+    fun setIdCardLayout(layout: IdCardLayout) {
+        _state.update { it.copy(idCardLayout = layout) }
+        generateIdCardCompositePreview()
+    }
+
+    fun retakeFront() {
+        _state.update {
+            it.copy(
+                idCardStep = IdCardStep.Front,
+                idCardFrontBitmap = null,
+                idCardCompositePreviewBitmap = null
+            )
+        }
+    }
+
+    fun retakeBack() {
+        _state.update {
+            it.copy(
+                idCardStep = IdCardStep.Back,
+                idCardBackBitmap = null,
+                idCardCompositePreviewBitmap = null
+            )
+        }
+    }
+
+    /** Combine front+back into a page and transition seamlessly to Review Studio. */
+    fun combineIdCardSides() {
+        val composite = _state.value.idCardCompositePreviewBitmap
+            ?: run {
+                val front = _state.value.idCardFrontBitmap ?: return
+                createSingleSideIdCardBitmap(front)
+            }
+
+        val page = ScannedPageData(
+            index = _state.value.scannedPages.size,
+            originalBitmap = composite,
+            bitmap = composite,
+            filter = _state.value.idCardFilter
+        )
+
+        _state.update {
+            it.copy(
+                scannedPages = it.scannedPages + page,
+                scanMode = ScanMode.Document,
+                isProcessing = false,
+                showCamera = false,
+                idCardStep = IdCardStep.Front,
+                idCardFrontBitmap = null,
+                idCardBackBitmap = null,
+                idCardCompositePreviewBitmap = null,
+                isBackSkipped = false,
+                selectedPageIndex = it.scannedPages.size
+            )
+        }
+    }
+
+    fun directPrintIdCard() {
+        combineIdCardSides()
+        directPrint()
+    }
+
+    fun savePdfIdCard() {
+        combineIdCardSides()
+        savePdf()
     }
 
     fun resetIdCard() {
@@ -295,6 +361,7 @@ class ScannerViewModel @Inject constructor(
                 idCardStep = IdCardStep.Front,
                 idCardFrontBitmap = null,
                 idCardBackBitmap = null,
+                idCardCompositePreviewBitmap = null,
                 isBackSkipped = false,
                 idCardFrontOnly = false
             )
@@ -304,38 +371,60 @@ class ScannerViewModel @Inject constructor(
     /**
      * Combines front and back ID card bitmaps into a single PORTRAIT A4 page
      * with both sides placed SIDE BY SIDE (front on left, back on right) near the top of the page.
-     * Absolutely NO text (no "FRONT", no "BACK", etc.) is drawn on the document, matching real scan standards.
+     * Absolutely NO text is drawn on the document, matching real scan standards.
      */
     private fun combineIdCardBitmaps(front: Bitmap, back: Bitmap): Bitmap {
-        // Portrait A4: 2480 x 3508 at 300 DPI for crystal clear text and barcodes
         val targetW = 2480  // Portrait A4 width
         val targetH = 3508  // Portrait A4 height
         val composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(composite)
         canvas.drawColor(Color.WHITE)
 
-        // Standard ISO/IEC 7810 ID-1 card dimensions (85.60 mm × 53.98 mm)
-        // At 300 DPI: cardW = 1011 px, cardH = 638 px
         val cardW = 1011
         val cardH = 638
-        val gap = 80 // ~6.8 mm between the two cards
-        val topMargin = 220 // Placed near top of A4 sheet (as in Image 4)
+        val gap = 80
+        val topMargin = 220
 
         val totalCardsWidth = cardW * 2 + gap
-        val startX = (targetW - totalCardsWidth) / 2 // Centered horizontally: (2480 - 2102) / 2 = 189 px
+        val startX = (targetW - totalCardsWidth) / 2
 
-        // Draw Front card on LEFT
         val frontRect = RectF(startX.toFloat(), topMargin.toFloat(), (startX + cardW).toFloat(), (topMargin + cardH).toFloat())
         val frontPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         canvas.drawBitmap(front, null, frontRect, frontPaint)
 
-        // Draw Back card on RIGHT
         val backStartX = startX + cardW + gap
         val backRect = RectF(backStartX.toFloat(), topMargin.toFloat(), (backStartX + cardW).toFloat(), (topMargin + cardH).toFloat())
         val backPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         canvas.drawBitmap(back, null, backRect, backPaint)
 
-        // NO ANY TEXT DRAWN (No "FRONT", no "BACK", no headers, no watermarks, no lines)
+        return composite
+    }
+
+    /**
+     * Combines front and back ID card bitmaps into a stacked portrait A4 page (front on top, back below).
+     */
+    private fun combineIdCardBitmapsStacked(front: Bitmap, back: Bitmap): Bitmap {
+        val targetW = 2480  // Portrait A4 width
+        val targetH = 3508  // Portrait A4 height
+        val composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(composite)
+        canvas.drawColor(Color.WHITE)
+
+        val cardW = 1011
+        val cardH = 638
+        val gap = 120
+        val topMargin = 260
+        val startX = (targetW - cardW) / 2
+
+        val frontRect = RectF(startX.toFloat(), topMargin.toFloat(), (startX + cardW).toFloat(), (topMargin + cardH).toFloat())
+        val frontPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        canvas.drawBitmap(front, null, frontRect, frontPaint)
+
+        val backTop = topMargin + cardH + gap
+        val backRect = RectF(startX.toFloat(), backTop.toFloat(), (startX + cardW).toFloat(), (backTop + cardH).toFloat())
+        val backPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+        canvas.drawBitmap(back, null, backRect, backPaint)
+
         return composite
     }
 
@@ -352,14 +441,13 @@ class ScannerViewModel @Inject constructor(
 
         val cardW = 1011
         val cardH = 638
-        val topMargin = 220
+        val topMargin = 260
         val startX = (targetW - cardW) / 2
 
         val frontRect = RectF(startX.toFloat(), topMargin.toFloat(), (startX + cardW).toFloat(), (topMargin + cardH).toFloat())
         val frontPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         canvas.drawBitmap(front, null, frontRect, frontPaint)
 
-        // NO ANY TEXT DRAWN
         return composite
     }
 
@@ -842,6 +930,7 @@ class ScannerViewModel @Inject constructor(
     fun clearSavedPdf() { _state.update { it.copy(savedPdfUri = null) } }
     fun clearSavePdfSuccess() { _state.update { it.copy(savePdfSuccessMessage = null) } }
     fun clearDirectPrintSuccess() { _state.update { it.copy(directPrintSuccess = false) } }
+    fun backToCamera() { _state.update { it.copy(showCamera = true) } }
 
     // ═══════════════════════════════════════════════════════════════
     //  Image Processing & Filters
@@ -889,89 +978,275 @@ class ScannerViewModel @Inject constructor(
 
     private fun applyFilter(bitmap: Bitmap, filter: String): Bitmap {
         return when (filter) {
-            "B&W" -> adaptiveBlackAndWhite(bitmap)
-            "Grayscale" -> toGrayscale(bitmap)
-            "Auto Enhance" -> autoEnhanceDocument(bitmap)
-            "Sharp" -> applySharpenKernel(bitmap)
+            "Magic Color" -> magicColorDocument(bitmap)
+            "Clean B&W", "B&W" -> cleanBlackAndWhite(bitmap)
+            "Auto Clarify", "Auto Enhance" -> autoClarifyDocument(bitmap)
+            "Grayscale" -> enhancedGrayscale(bitmap)
+            "Sharp", "Super Sharp" -> superSharp(bitmap)
             "High Contrast" -> highContrast(bitmap)
-            else -> bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            "Original" -> bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            else -> magicColorDocument(bitmap)
         }
     }
 
-    private fun adaptiveBlackAndWhite(bitmap: Bitmap): Bitmap {
-        val w = bitmap.width; val h = bitmap.height
-        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    /**
+     * CamScanner-grade "Magic Color" document filter:
+     * 1. Estimates background illumination using a downsampled block grid to detect shadows, gradients, and paper tint.
+     * 2. Divides out the background illumination to flatten the paper to uniform clean brightness across the entire page.
+     * 3. Bleaches near-white paper background to pure #FFFFFF while protecting ink markings.
+     * 4. Enhances color saturation for stamps, handwriting, signatures, and logos.
+     * 5. Applies crisp unsharp edge sharpening for razor-sharp text readability.
+     */
+    private fun magicColorDocument(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
         val srcPixels = IntArray(w * h)
         bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
-        val gray = IntArray(w * h)
-        for (i in srcPixels.indices) {
-            val r = (srcPixels[i] shr 16) and 0xFF
-            val g = (srcPixels[i] shr 8) and 0xFF
-            val b = srcPixels[i] and 0xFF
-            gray[i] = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-        }
-        val blockSize = max(15, min(w, h) / 40)
-        val c = 10
-        val outPixels = IntArray(w * h)
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                var sum = 0; var count = 0
-                val y1 = max(0, y - blockSize / 2); val y2 = min(h - 1, y + blockSize / 2)
-                val x1 = max(0, x - blockSize / 2); val x2 = min(w - 1, x + blockSize / 2)
-                var sy = y1; while (sy <= y2) { var sx = x1; while (sx <= x2) { sum += gray[sy * w + sx]; count++; sx += 2 }; sy += 2 }
-                val threshold = if (count > 0) sum / count - c else 128
-                outPixels[y * w + x] = if (gray[y * w + x] > threshold) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+
+        val gridCols = 32
+        val gridRows = 32
+        val cellW = max(1, w / gridCols)
+        val cellH = max(1, h / gridRows)
+        val bgL = FloatArray(gridCols * gridRows)
+
+        for (gy in 0 until gridRows) {
+            val yStart = gy * cellH
+            val yEnd = min(h, (gy + 1) * cellH)
+            for (gx in 0 until gridCols) {
+                val xStart = gx * cellW
+                val xEnd = min(w, (gx + 1) * cellW)
+
+                var maxLum = 120f
+                val step = max(1, (xEnd - xStart) / 10)
+                var y = yStart
+                while (y < yEnd) {
+                    var x = xStart
+                    while (x < xEnd) {
+                        val p = srcPixels[y * w + x]
+                        val r = (p shr 16) and 0xFF
+                        val g = (p shr 8) and 0xFF
+                        val b = p and 0xFF
+                        val lum = 0.299f * r + 0.587f * g + 0.114f * b
+                        if (lum > maxLum) maxLum = lum
+                        x += step
+                    }
+                    y += step
+                }
+                bgL[gy * gridCols + gx] = maxLum.coerceIn(100f, 255f)
             }
         }
-        result.setPixels(outPixels, 0, w, 0, 0, w, h)
-        return result
-    }
 
-    private fun toGrayscale(bitmap: Bitmap): Bitmap {
-        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        val paint = Paint()
-        val cm = ColorMatrix().apply { setSaturation(0f) }
-        val contrastMatrix = ColorMatrix(floatArrayOf(
-            1.1f, 0f, 0f, 0f, -12f, 0f, 1.1f, 0f, 0f, -12f,
-            0f, 0f, 1.1f, 0f, -12f, 0f, 0f, 0f, 1f, 0f
-        ))
-        cm.postConcat(contrastMatrix)
-        paint.colorFilter = ColorMatrixColorFilter(cm)
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        return result
-    }
-
-    private fun autoEnhanceDocument(bitmap: Bitmap): Bitmap {
-        val w = bitmap.width; val h = bitmap.height
-        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val srcPixels = IntArray(w * h)
-        bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
-        val histogram = IntArray(256)
-        for (pixel in srcPixels) {
-            val r = (pixel shr 16) and 0xFF; val g = (pixel shr 8) and 0xFF; val b = pixel and 0xFF
-            histogram[(0.299 * r + 0.587 * g + 0.114 * b).toInt().coerceIn(0, 255)]++
+        // Smooth background grid with a 3x3 box blur
+        val smoothedBg = FloatArray(gridCols * gridRows)
+        for (gy in 0 until gridRows) {
+            for (gx in 0 until gridCols) {
+                var sum = 0f
+                var count = 0
+                for (dy in -1..1) {
+                    val ny = gy + dy
+                    if (ny in 0 until gridRows) {
+                        for (dx in -1..1) {
+                            val nx = gx + dx
+                            if (nx in 0 until gridCols) {
+                                sum += bgL[ny * gridCols + nx]
+                                count++
+                            }
+                        }
+                    }
+                }
+                smoothedBg[gy * gridCols + gx] = sum / count
+            }
         }
-        val totalPixels = w * h
-        var low = 0; var high = 255; var cumSum = 0
-        for (i in 0..255) { cumSum += histogram[i]; if (cumSum >= totalPixels * 0.02) { low = i; break } }
-        cumSum = 0
-        for (i in 255 downTo 0) { cumSum += histogram[i]; if (cumSum >= totalPixels * 0.02) { high = i; break } }
-        val range = (high - low).coerceAtLeast(1).toFloat()
+
         val outPixels = IntArray(w * h)
-        for (i in srcPixels.indices) {
-            val r = (srcPixels[i] shr 16) and 0xFF; val g = (srcPixels[i] shr 8) and 0xFF
-            val b = srcPixels[i] and 0xFF; val a = (srcPixels[i] shr 24) and 0xFF
-            val nr = (((r - low) / range) * 255).toInt().coerceIn(0, 255)
-            val ng = (((g - low) / range) * 255).toInt().coerceIn(0, 255)
-            val nb = (((b - low) / range) * 255).toInt().coerceIn(0, 255)
-            val fr = (255 * (nr / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
-            val fg = (255 * (ng / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
-            val fb = (255 * (nb / 255f).pow(0.85f)).toInt().coerceIn(0, 255)
-            outPixels[i] = (a shl 24) or (fr shl 16) or (fg shl 8) or fb
+        for (y in 0 until h) {
+            val gy = (y / cellH).coerceIn(0, gridRows - 1)
+            for (x in 0 until w) {
+                val gx = (x / cellW).coerceIn(0, gridCols - 1)
+                val bg = smoothedBg[gy * gridCols + gx]
+
+                val p = srcPixels[y * w + x]
+                val a = (p shr 24) and 0xFF
+                val r = (p shr 16) and 0xFF
+                val g = (p shr 8) and 0xFF
+                val b = p and 0xFF
+
+                val scale = 255.0f / bg
+                var nr = (r * scale).coerceIn(0f, 255f)
+                var ng = (g * scale).coerceIn(0f, 255f)
+                var nb = (b * scale).coerceIn(0f, 255f)
+
+                val lum = 0.299f * nr + 0.587f * ng + 0.114f * nb
+                val maxC = max(nr, max(ng, nb))
+                val minC = min(nr, min(ng, nb))
+                val sat = maxC - minC
+
+                if (lum > 200f && sat < 32f) {
+                    val bleach = ((lum - 200f) / 45f).coerceIn(0f, 1f)
+                    nr += (255f - nr) * bleach
+                    ng += (255f - ng) * bleach
+                    nb += (255f - nb) * bleach
+                } else if (sat >= 20f) {
+                    val mean = (nr + ng + nb) / 3f
+                    nr = (mean + (nr - mean) * 1.35f).coerceIn(0f, 255f)
+                    ng = (mean + (ng - mean) * 1.35f).coerceIn(0f, 255f)
+                    nb = (mean + (nb - mean) * 1.35f).coerceIn(0f, 255f)
+                } else if (lum < 160f) {
+                    val deepen = ((160f - lum) / 160f) * 0.25f
+                    nr = (nr * (1f - deepen)).coerceIn(0f, 255f)
+                    ng = (ng * (1f - deepen)).coerceIn(0f, 255f)
+                    nb = (nb * (1f - deepen)).coerceIn(0f, 255f)
+                }
+
+                outPixels[y * w + x] = (a shl 24) or (nr.toInt() shl 16) or (ng.toInt() shl 8) or nb.toInt()
+            }
         }
+
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         result.setPixels(outPixels, 0, w, 0, 0, w, h)
         return applySharpenKernel(result)
+    }
+
+    /**
+     * CamScanner-grade "Clean B&W":
+     * Fast integral-image adaptive binarization with anti-aliased font edges.
+     * Paper background becomes 100% pure white (#FFFFFF), dark text becomes rich black (#000000).
+     */
+    private fun cleanBlackAndWhite(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        val srcPixels = IntArray(w * h)
+        bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
+
+        val gray = IntArray(w * h)
+        for (i in srcPixels.indices) {
+            val p = srcPixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            gray[i] = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
+        }
+
+        val stride = w + 1
+        val integral = LongArray(stride * (h + 1))
+        for (y in 0 until h) {
+            var rowSum = 0L
+            val yOffset = (y + 1) * stride
+            val prevYOffset = y * stride
+            val grayOffset = y * w
+            for (x in 0 until w) {
+                rowSum += gray[grayOffset + x]
+                integral[yOffset + (x + 1)] = integral[prevYOffset + (x + 1)] + rowSum
+            }
+        }
+
+        val s = max(16, min(w, h) / 32)
+        val outPixels = IntArray(w * h)
+
+        for (y in 0 until h) {
+            val y1 = max(0, y - s)
+            val y2 = min(h - 1, y + s)
+            val y1Off = y1 * stride
+            val y2Off = (y2 + 1) * stride
+
+            for (x in 0 until w) {
+                val x1 = max(0, x - s)
+                val x2 = min(w - 1, x + s)
+                val count = (x2 - x1 + 1) * (y2 - y1 + 1)
+
+                val sum = integral[y2Off + (x2 + 1)] - integral[y1Off + (x2 + 1)] -
+                          integral[y2Off + x1] + integral[y1Off + x1]
+                val mean = (sum / count).toInt()
+                val threshold = (mean * 0.88f - 4).toInt()
+                val gVal = gray[y * w + x]
+
+                val pixelVal = when {
+                    gVal <= threshold - 12 -> 0x00
+                    gVal >= threshold + 12 -> 0xFF
+                    else -> (((gVal - (threshold - 12)).toFloat() / 24f) * 255f).toInt().coerceIn(0, 255)
+                }
+
+                outPixels[y * w + x] = (0xFF shl 24) or (pixelVal shl 16) or (pixelVal shl 8) or pixelVal
+            }
+        }
+
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        result.setPixels(outPixels, 0, w, 0, 0, w, h)
+        return result
+    }
+
+    /**
+     * Auto Clarify / Lighten:
+     * Removes shadows, lifts midtones with gamma curve, and stretches contrast.
+     */
+    private fun autoClarifyDocument(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        val srcPixels = IntArray(w * h)
+        bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
+
+        val histogram = IntArray(256)
+        for (p in srcPixels) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            histogram[(0.299f * r + 0.587f * g + 0.114f * b).toInt().coerceIn(0, 255)]++
+        }
+
+        val total = w * h
+        var low = 0; var high = 255; var cum = 0
+        for (i in 0..255) { cum += histogram[i]; if (cum >= total * 0.015) { low = i; break } }
+        cum = 0
+        for (i in 255 downTo 0) { cum += histogram[i]; if (cum >= total * 0.015) { high = i; break } }
+        val range = (high - low).coerceAtLeast(1).toFloat()
+
+        val outPixels = IntArray(w * h)
+        for (i in srcPixels.indices) {
+            val p = srcPixels[i]
+            val a = (p shr 24) and 0xFF
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+
+            val nr = (((r - low) / range) * 255f).coerceIn(0f, 255f)
+            val ng = (((g - low) / range) * 255f).coerceIn(0f, 255f)
+            val nb = (((b - low) / range) * 255f).coerceIn(0f, 255f)
+
+            val fr = (255f * (nr / 255f).pow(0.82f)).toInt().coerceIn(0, 255)
+            val fg = (255f * (ng / 255f).pow(0.82f)).toInt().coerceIn(0, 255)
+            val fb = (255f * (nb / 255f).pow(0.82f)).toInt().coerceIn(0, 255)
+
+            outPixels[i] = (a shl 24) or (fr shl 16) or (fg shl 8) or fb
+        }
+
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        result.setPixels(outPixels, 0, w, 0, 0, w, h)
+        return applySharpenKernel(result)
+    }
+
+    private fun enhancedGrayscale(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        val srcPixels = IntArray(w * h)
+        bitmap.getPixels(srcPixels, 0, w, 0, 0, w, h)
+
+        val outPixels = IntArray(w * h)
+        for (i in srcPixels.indices) {
+            val p = srcPixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            val gray = (0.299f * r + 0.587f * g + 0.114f * b).toInt().coerceIn(0, 255)
+            val stretched = (((gray - 20) / 215f) * 255f).toInt().coerceIn(0, 255)
+            outPixels[i] = (0xFF shl 24) or (stretched shl 16) or (stretched shl 8) or stretched
+        }
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        result.setPixels(outPixels, 0, w, 0, 0, w, h)
+        return applySharpenKernel(result)
+    }
+
+    private fun superSharp(bitmap: Bitmap): Bitmap {
+        return applySharpenKernel(bitmap)
     }
 
     private fun highContrast(bitmap: Bitmap): Bitmap {
